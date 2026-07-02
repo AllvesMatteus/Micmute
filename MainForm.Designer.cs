@@ -114,26 +114,26 @@ namespace MicMute
             this.hotkeyToolStripMenuItem,
             this.toolStripMenuItem1});
             this.iconContextMenu.Name = "iconContextMenu";
-            this.iconContextMenu.Size = new System.Drawing.Size(200, 80);
+            this.iconContextMenu.Size = new System.Drawing.Size(220, 100);
             // 
             // toolStripMenuItem2
             // 
             this.toolStripMenuItem2.Name = "toolStripMenuItem2";
-            this.toolStripMenuItem2.Size = new System.Drawing.Size(199, 38);
+            this.toolStripMenuItem2.Size = new System.Drawing.Size(219, 40);
             this.toolStripMenuItem2.Text = "Selecionar microfone";
             this.toolStripMenuItem2.Click += new System.EventHandler(this.toolStripMenuItem2_Click);
             // 
             // hotkeyToolStripMenuItem
             // 
             this.hotkeyToolStripMenuItem.Name = "hotkeyToolStripMenuItem";
-            this.hotkeyToolStripMenuItem.Size = new System.Drawing.Size(199, 38);
+            this.hotkeyToolStripMenuItem.Size = new System.Drawing.Size(219, 40);
             this.hotkeyToolStripMenuItem.Text = "Configurações";
             this.hotkeyToolStripMenuItem.Click += new System.EventHandler(this.HotkeyToolStripMenuItem_Click);
             // 
             // toolStripMenuItem1
             // 
             this.toolStripMenuItem1.Name = "toolStripMenuItem1";
-            this.toolStripMenuItem1.Size = new System.Drawing.Size(199, 38);
+            this.toolStripMenuItem1.Size = new System.Drawing.Size(219, 40);
             this.toolStripMenuItem1.Text = "Fechar";
             this.toolStripMenuItem1.Click += new System.EventHandler(this.ExitMenuItem_Click);
             // 

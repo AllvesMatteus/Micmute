@@ -169,6 +169,11 @@ namespace MicMute
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
+            iconContextMenu.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
+            foreach (ToolStripItem item in iconContextMenu.Items)
+            {
+                item.Padding = new Padding(12, 8, 12, 8);
+            }
 
             // Setup modern container wrappers for Hotkey inputs inside the right column panel
             this.hotkeyTextBox.Parent = null;
@@ -795,7 +800,14 @@ namespace MicMute
         {
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
-                openFileDialog.Filter = "Arquivos de áudio (*.mp3;*.wav)|*.mp3;*.wav|Todos os arquivos (*.*)|*.*";
+                string soundsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "sounds");
+                if (Directory.Exists(soundsDir))
+                    openFileDialog.InitialDirectory = soundsDir;
+
+                string filterLabel = currentLang == "EN" ? "Audio files" : "Arquivos de áudio";
+                string allLabel = currentLang == "EN" ? "All files" : "Todos os arquivos";
+                openFileDialog.Filter = $"{filterLabel} (*.mp3;*.wav)|*.mp3;*.wav|{allLabel} (*.*)|*.*";
+
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     txtMutePath.Text = openFileDialog.FileName;
@@ -809,7 +821,14 @@ namespace MicMute
         {
             using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
-                openFileDialog.Filter = "Arquivos de áudio (*.mp3;*.wav)|*.mp3;*.wav|Todos os arquivos (*.*)|*.*";
+                string soundsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "sounds");
+                if (Directory.Exists(soundsDir))
+                    openFileDialog.InitialDirectory = soundsDir;
+
+                string filterLabel = currentLang == "EN" ? "Audio files" : "Arquivos de áudio";
+                string allLabel = currentLang == "EN" ? "All files" : "Todos os arquivos";
+                openFileDialog.Filter = $"{filterLabel} (*.mp3;*.wav)|*.mp3;*.wav|{allLabel} (*.*)|*.*";
+
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     txtUnmutePath.Text = openFileDialog.FileName;
