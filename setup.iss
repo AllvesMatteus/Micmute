@@ -37,6 +37,8 @@ Source: "d:\Developer\sandbox\MicMute\assets\icons\github.png"; DestDir: "{app}\
 Source: "d:\Developer\sandbox\MicMute\assets\icons\linkedin.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
 Source: "d:\Developer\sandbox\MicMute\assets\sounds\muted.wav"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion
 Source: "d:\Developer\sandbox\MicMute\assets\sounds\unmuted.wav"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion
+Source: "d:\Developer\sandbox\MicMute\assets\sounds\muted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "d:\Developer\sandbox\MicMute\assets\sounds\unmuted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
 
 
 [Icons]

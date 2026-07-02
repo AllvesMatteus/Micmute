@@ -11,22 +11,75 @@ namespace MicMute
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int attrLen);
 
-        public AboutForm()
+        private string lang;
+
+        public AboutForm(string lang)
         {
+            this.lang = lang;
             InitializeComponent();
             
-            // Set Immersive Dark Mode for Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE = 20)
-            int useDark = 1;
-            DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
-            
-            // Set Caption Background and Border Colors (DWMWA_BORDER_COLOR = 34, DWMWA_CAPTION_COLOR = 35) to #202020
-            int colorVal = 0x202020;
-            DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
-            DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
+            // Apply theme dynamically matching system personalization settings
+            ApplyWindowTheme();
+        }
+
+        private bool IsSystemDarkTheme()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    if (key != null)
+                    {
+                        object value = key.GetValue("AppsUseLightTheme");
+                        if (value != null)
+                        {
+                            return (int)value == 0;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return true;
+        }
+
+        private void ApplyWindowTheme()
+        {
+            try
+            {
+                bool isDark = IsSystemDarkTheme();
+                int useDark = isDark ? 1 : 0;
+                DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
+                
+                if (isDark)
+                {
+                    int colorVal = 0x202020;
+                    DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
+                    DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
+                }
+                else
+                {
+                    int defaultColor = -1;
+                    DwmSetWindowAttribute(this.Handle, 34, ref defaultColor, sizeof(int));
+                    DwmSetWindowAttribute(this.Handle, 35, ref defaultColor, sizeof(int));
+                }
+            }
+            catch { }
         }
 
         private void AboutForm_Load(object sender, EventArgs e)
         {
+            // Apply translations
+            if (lang == "EN")
+            {
+                this.Text = "About";
+                lblAuthorLabel.Text = "Developed by:";
+            }
+            else
+            {
+                this.Text = "Sobre";
+                lblAuthorLabel.Text = "Desenvolvido por:";
+            }
+
             // Set application icon if available
             string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micon.ico");
             if (File.Exists(iconPath))
@@ -70,7 +123,9 @@ namespace MicMute
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Não foi possível abrir o link: " + ex.Message, "Erro", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                string errMsg = lang == "EN" ? "Could not open link: " : "Não foi possível abrir o link: ";
+                string titleMsg = lang == "EN" ? "Error" : "Erro";
+                MessageBox.Show(errMsg + ex.Message, titleMsg, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

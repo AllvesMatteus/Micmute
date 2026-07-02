@@ -74,7 +74,12 @@ namespace MicMute
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
         private static extern bool DestroyIcon(IntPtr handle);
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
         private Icon currentTrayIcon = null;
+        private int soundVolume = 100;
+        private string currentLang = "PT";
 
         public MainForm()
         {
@@ -151,14 +156,8 @@ namespace MicMute
         {
             MyHide();
 
-            // Set Immersive Dark Mode for Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE = 20)
-            int useDark = 1;
-            DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
-
-            // Set Window Border Color (DWMWA_BORDER_COLOR = 34) and Caption Color (DWMWA_CAPTION_COLOR = 35) to #202020
-            int colorVal = 0x202020;
-            DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
-            DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
+            // Apply DWM window attributes dynamically based on light/dark system theme
+            ApplyWindowTheme();
 
             // Apply custom professional dark context menu renderer & remove margins
             iconContextMenu.Renderer = new FluentMenuRenderer();
@@ -184,8 +183,25 @@ namespace MicMute
 
             playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 0) == 1;
             playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
-            soundMutePath = (string)registryKey.GetValue(registrySoundMutePath) ?? @"assets\sounds\muted.wav";
-            soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath) ?? @"assets\sounds\unmuted.wav";
+
+            soundMutePath = (string)registryKey.GetValue(registrySoundMutePath);
+            if (string.IsNullOrEmpty(soundMutePath))
+            {
+                string mp3Path = @"assets\sounds\muted.mp3";
+                soundMutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)) ? mp3Path : @"assets\sounds\muted.wav";
+            }
+            soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath);
+            if (string.IsNullOrEmpty(soundUnmutePath))
+            {
+                string mp3Path = @"assets\sounds\unmuted.mp3";
+                soundUnmutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)) ? mp3Path : @"assets\sounds\unmuted.wav";
+            }
+
+            soundVolume = registryKey.GetValue("SoundVolume") != null ? Convert.ToInt32(registryKey.GetValue("SoundVolume")) : 100;
+            currentLang = (string)registryKey.GetValue("Language") ?? "PT";
+
+            lblVolumeValue.Text = soundVolume + "%";
+            cbLanguage.SelectedIndex = (currentLang == "EN") ? 1 : 0;
 
             chkPlayMute.Checked = playSoundOnMute;
             chkPlayUnmute.Checked = playSoundOnUnmute;
@@ -193,8 +209,8 @@ namespace MicMute
             txtUnmutePath.Text = soundUnmutePath;
 
             // Display short names for files
-            lblMuteFile.Text = string.IsNullOrEmpty(soundMutePath) ? "Nenhum som" : Path.GetFileName(soundMutePath);
-            lblUnmuteFile.Text = string.IsNullOrEmpty(soundUnmutePath) ? "Nenhum som" : Path.GetFileName(soundUnmutePath);
+            lblMuteFile.Text = string.IsNullOrEmpty(soundMutePath) ? (currentLang == "EN" ? "No sound" : "Nenhum som") : Path.GetFileName(soundMutePath);
+            lblUnmuteFile.Text = string.IsNullOrEmpty(soundUnmutePath) ? (currentLang == "EN" ? "No sound" : "Nenhum som") : Path.GetFileName(soundUnmutePath);
 
             // Wire custom ToggleSwitch events
             chkPlayMute.CheckedChanged += (s, ev) => playSoundOnMute = chkPlayMute.Checked;
@@ -260,6 +276,8 @@ namespace MicMute
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 unMuteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
             }
+
+            ApplyLanguage(currentLang);
         }
 
         private void GlobalHook_KeyDown(object sender, KeyEventArgs e)
@@ -416,6 +434,24 @@ namespace MicMute
         [System.Runtime.InteropServices.DllImport("winmm.dll")]
         private static extern long mciSendString(string command, System.Text.StringBuilder returnValue, int returnLength, IntPtr winhandle);
 
+        private int GetWindowsVolume()
+        {
+            try
+            {
+                var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
+                var dev = controller.DefaultPlaybackDevice;
+                if (dev != null)
+                {
+                    return (int)dev.Volume;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error reading Windows volume: " + ex.Message);
+            }
+            return 100;
+        }
+
         public void PlaySoundFile(string filePath)
         {
             string resolvedPath = ResolveSoundPath(filePath);
@@ -428,6 +464,12 @@ namespace MicMute
             {
                 mciSendString("close micMuteSound", null, 0, IntPtr.Zero);
                 mciSendString(string.Format("open \"{0}\" type mpegvideo alias micMuteSound", resolvedPath), null, 0, IntPtr.Zero);
+                
+                // Scale user preference volume by current Windows master volume
+                int winVol = GetWindowsVolume();
+                int finalVol = (int)((soundVolume / 100.0) * winVol * 10);
+                mciSendString(string.Format("setaudio micMuteSound volume to {0}", finalVol), null, 0, IntPtr.Zero);
+                
                 mciSendString("play micMuteSound", null, 0, IntPtr.Zero);
             }
             catch (Exception ex)
@@ -498,7 +540,7 @@ namespace MicMute
             switch (currentStatus)
             {
                 case MicStatus.On:
-                    statusText = "ATIVO";
+                    statusText = currentLang == "EN" ? "ACTIVE" : "ATIVO";
                     statusColor = FluentTheme.UnmuteGreen;
                     statusGlyph = "\uE720"; // Microphone
                     
@@ -510,7 +552,7 @@ namespace MicMute
                     break;
                     
                 case MicStatus.Off:
-                    statusText = "MUTADO";
+                    statusText = currentLang == "EN" ? "MUTED" : "MUTADO";
                     statusColor = FluentTheme.MuteRed;
                     statusGlyph = "\uE721"; // Microphone off
                     
@@ -522,13 +564,13 @@ namespace MicMute
                     break;
                     
                 case MicStatus.Error:
-                    statusText = "ERRO";
+                    statusText = currentLang == "EN" ? "ERROR" : "ERRO";
                     statusColor = FluentTheme.ErrorOrange;
                     statusGlyph = "\uE7BA"; // Warning
                     
                     SetTrayIcon(iconError ?? CreateDynamicIcon(statusGlyph, statusColor));
                     if (iconError != null) this.Icon = iconError;
-                    this.icon.Text = "< Nenhum dispositivo >";
+                    this.icon.Text = currentLang == "EN" ? "< No device >" : "< Nenhum dispositivo >";
                     
                     if (playSound) PlaySoundFile("error.wav");
                     break;
@@ -537,7 +579,7 @@ namespace MicMute
             // Update main window controls
             lblStatusText.Text = statusText;
             lblStatusText.ForeColor = statusColor;
-            lblDeviceName.Text = device != null ? device.FullName : "< Nenhum dispositivo detectado >";
+            lblDeviceName.Text = device != null ? device.FullName : (currentLang == "EN" ? "< No device detected >" : "< Nenhum dispositivo detectado >");
             
             // Customize visual status button to use the dark theme background and a modern border
             btnToggleMic.Image = currentStatus == MicStatus.On ? imgOn : (currentStatus == MicStatus.Off ? imgOff : null);
@@ -581,6 +623,11 @@ namespace MicMute
             if (e.Button == MouseButtons.Left)
             {
                 ToggleMicStatus();
+            }
+            else if (e.Button == MouseButtons.Right)
+            {
+                SetForegroundWindow(this.Handle);
+                iconContextMenu.Show(Control.MousePosition);
             }
         }
 
@@ -641,6 +688,8 @@ namespace MicMute
                 registryKey.SetValue(registryPlayUnmute, playSoundOnUnmute ? 1 : 0);
                 registryKey.SetValue(registrySoundMutePath, soundMutePath);
                 registryKey.SetValue(registrySoundUnmutePath, soundUnmutePath);
+                registryKey.SetValue("SoundVolume", soundVolume, RegistryValueKind.DWord);
+                registryKey.SetValue("Language", currentLang, RegistryValueKind.String);
 
                 SaveStartupSettings();
             }
@@ -752,10 +801,119 @@ namespace MicMute
 
         private void BtnAbout_Click(object sender, EventArgs e)
         {
-            using (AboutForm about = new AboutForm())
+            using (AboutForm about = new AboutForm(currentLang))
             {
                 about.ShowDialog(this);
             }
+        }
+
+        private bool IsSystemDarkTheme()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    if (key != null)
+                    {
+                        object value = key.GetValue("AppsUseLightTheme");
+                        if (value != null)
+                        {
+                            return (int)value == 0;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return true;
+        }
+
+        private void ApplyWindowTheme()
+        {
+            try
+            {
+                bool isDark = IsSystemDarkTheme();
+                int useDark = isDark ? 1 : 0;
+                DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
+
+                if (isDark)
+                {
+                    int colorVal = 0x202020;
+                    DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
+                    DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
+                }
+                else
+                {
+                    int defaultColor = -1;
+                    DwmSetWindowAttribute(this.Handle, 34, ref defaultColor, sizeof(int));
+                    DwmSetWindowAttribute(this.Handle, 35, ref defaultColor, sizeof(int));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error applying theme: " + ex.Message);
+            }
+        }
+
+        private void ApplyLanguage(string lang)
+        {
+            if (lang == "EN")
+            {
+                lblStartWithWindows.Text = "Start automatically with Windows";
+                btnAbout.Text = "About";
+                lblFeedbackTitle.Text = "Sound Feedback";
+                lblPlayMuteText.Text = "Sound on mute";
+                lblPlayUnmuteText.Text = "Sound on unmute";
+                lblHotkeysTitle.Text = "Keyboard Shortcuts";
+                lblToggleLabel.Text = "Toggle Hotkey:";
+                lblMuteLabel.Text = "Mute Hotkey:";
+                lblUnmuteLabel.Text = "Unmute Hotkey:";
+                buttonReset.Text = "Clear";
+                muteReset.Text = "Clear";
+                unmuteReset.Text = "Clear";
+                hotkeyToolStripMenuItem.Text = "Settings";
+                toolStripMenuItem1.Text = "Close";
+            }
+            else
+            {
+                lblStartWithWindows.Text = "Iniciar automaticamente com o Windows";
+                btnAbout.Text = "Sobre";
+                lblFeedbackTitle.Text = "Feedback Sonoro";
+                lblPlayMuteText.Text = "Som ao mutar";
+                lblPlayUnmuteText.Text = "Som ao desmutar";
+                lblHotkeysTitle.Text = "Teclas de Atalho";
+                lblToggleLabel.Text = "Alternar (Toggle):";
+                lblMuteLabel.Text = "Mutar (Mute):";
+                lblUnmuteLabel.Text = "Desmutar (Unmute):";
+                buttonReset.Text = "Limpar";
+                muteReset.Text = "Limpar";
+                unmuteReset.Text = "Limpar";
+                hotkeyToolStripMenuItem.Text = "Configurações";
+                toolStripMenuItem1.Text = "Fechar";
+            }
+
+            var dev = getSelectedDevice();
+            UpdateStatus(dev);
+        }
+
+        private void CbLanguage_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            currentLang = (cbLanguage.SelectedIndex == 1) ? "EN" : "PT";
+            ApplyLanguage(currentLang);
+            SaveSettings();
+        }
+
+        private void BtnVolDown_Click(object sender, EventArgs e)
+        {
+            soundVolume = Math.Max(0, soundVolume - 10);
+            lblVolumeValue.Text = soundVolume + "%";
+            SaveSettings();
+        }
+
+        private void BtnVolUp_Click(object sender, EventArgs e)
+        {
+            soundVolume = Math.Min(100, soundVolume + 10);
+            lblVolumeValue.Text = soundVolume + "%";
+            SaveSettings();
         }
     }
 
