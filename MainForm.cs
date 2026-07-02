@@ -1,23 +1,30 @@
-﻿using AudioSwitcher.AudioApi;
+using AudioSwitcher.AudioApi;
 using AudioSwitcher.AudioApi.CoreAudio;
 using Microsoft.Win32;
 using Shortcut;
 using System;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Media;
 using System.Reactive;
 using System.Windows.Forms;
 
-
 namespace MicMute
 {
     public partial class MainForm : Form
     {
-        const string DEFAULT_RECORDING_DEVICE = "Default recording device";
+        const string DEFAULT_RECORDING_DEVICE = "Dispositivo de gravação padrão";
         public CoreAudioController AudioController = new CoreAudioController();
-        private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
+        private readonly GlobalKeyboardHook globalHook = new GlobalKeyboardHook();
+
+        private bool isExiting = false;
+        private Image imgOn = null;
+        private Image imgOff = null;
+        private Icon iconOn = null;
+        private Icon iconOff = null;
+        private Icon iconError = null;
         
         // toggle
         private readonly string registryKeyName = "Hotkey";
@@ -34,16 +41,24 @@ namespace MicMute
         private readonly string registryDeviceId = "DeviceId";
         private readonly string registryDeviceName = "DeviceName";
 
+        private readonly string registryPlayMute = "PlayMute";
+        private readonly string registryPlayUnmute = "PlayUnmute";
+        private readonly string registrySoundMutePath = "SoundMutePath";
+        private readonly string registrySoundUnmutePath = "SoundUnmutePath";
+
+        private bool playSoundOnMute;
+        private bool playSoundOnUnmute;
+        private string soundMutePath;
+        private string soundUnmutePath;
+
         private string selectedDeviceId;
         private string selectedDeviceName;
-        private MicSelectorForm micSelectorForm;
-
 
         enum MicStatus
         {
             Initial, On, Off, Error
         }
-        private MicStatus currentStatus;
+        private MicStatus currentStatus = MicStatus.Initial;
 
         private bool myVisible; 
         public bool MyVisible
@@ -52,6 +67,15 @@ namespace MicMute
             set { myVisible = value; Visible = value; }
         }
 
+        // P/Invoke for Immersive Dark Mode and Icon Disposal
+        [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int attrLen);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
+        private static extern bool DestroyIcon(IntPtr handle);
+
+        private Icon currentTrayIcon = null;
+
         public MainForm()
         {
             InitializeComponent();
@@ -59,7 +83,14 @@ namespace MicMute
 
         private void OnNextDevice(DeviceChangedArgs next)
         {
-            UpdateSelectedDevice();
+            if (InvokeRequired)
+            {
+                Invoke(new Action(UpdateSelectedDevice));
+            }
+            else
+            {
+                UpdateSelectedDevice();
+            }
         }
 
         private void MyHide()
@@ -69,58 +100,235 @@ namespace MicMute
             MyVisible = false;
         }
 
+        private bool isLoadingMics = false;
+        private void LoadMicsDropdown()
+        {
+            isLoadingMics = true;
+            cbMics.Items.Clear();
+
+            ComboboxItem defaultItem = new ComboboxItem();
+            defaultItem.Text = DEFAULT_RECORDING_DEVICE;
+            defaultItem.deviceId = "";
+            cbMics.Items.Add(defaultItem);
+
+            int selectedIndex = 0;
+            int index = 1;
+
+            foreach (CoreAudioDevice device in AudioController.GetCaptureDevices())
+            {
+                if (device.State == DeviceState.Active)
+                {
+                    ComboboxItem item = new ComboboxItem();
+                    item.Text = device.FullName;
+                    item.deviceId = device.Id.ToString();
+                    cbMics.Items.Add(item);
+
+                    if (item.deviceId == selectedDeviceId)
+                    {
+                        selectedIndex = index;
+                    }
+                    index++;
+                }
+            }
+
+            cbMics.SelectedIndex = selectedIndex;
+            isLoadingMics = false;
+        }
+
         private void MyShow()
         {
             MyVisible = true;
             ShowInTaskbar = true;
+            LoadMicsDropdown();
+            UpdateSelectedDevice();
             CenterToScreen();
+            
+            this.WindowState = FormWindowState.Normal;
+            this.Activate();
         }
 
         private void MainForm_Load(object sender, EventArgs e)
         {
             MyHide();
+
+            // Set Immersive Dark Mode for Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE = 20)
+            int useDark = 1;
+            DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
+
+            // Set Window Border Color (DWMWA_BORDER_COLOR = 34) and Caption Color (DWMWA_CAPTION_COLOR = 35) to #202020
+            int colorVal = 0x202020;
+            DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
+            DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
+
+            // Apply custom professional dark context menu renderer & remove margins
+            iconContextMenu.Renderer = new FluentMenuRenderer();
+            iconContextMenu.ShowImageMargin = false;
+            iconContextMenu.ShowCheckMargin = false;
+
+            // Setup modern container wrappers for Hotkey inputs inside the right column panel
+            this.hotkeyTextBox.Parent = null;
+            this.muteTextBox.Parent = null;
+            this.unmuteTextBox.Parent = null;
+
+            var hotkeyContainer = new ModernTextBoxContainer(hotkeyTextBox) { Location = new Point(15, 60), Size = new Size(145, 34) };
+            var muteContainer = new ModernTextBoxContainer(muteTextBox) { Location = new Point(15, 145), Size = new Size(145, 34) };
+            var unmuteContainer = new ModernTextBoxContainer(unmuteTextBox) { Location = new Point(15, 230), Size = new Size(145, 34) };
+
+            panelHotkeys.Controls.Add(hotkeyContainer);
+            panelHotkeys.Controls.Add(muteContainer);
+            panelHotkeys.Controls.Add(unmuteContainer);
+
+            // Load registry values
             selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
             selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
 
+            playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 0) == 1;
+            playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
+            soundMutePath = (string)registryKey.GetValue(registrySoundMutePath) ?? @"assets\sounds\muted.wav";
+            soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath) ?? @"assets\sounds\unmuted.wav";
+
+            chkPlayMute.Checked = playSoundOnMute;
+            chkPlayUnmute.Checked = playSoundOnUnmute;
+            txtMutePath.Text = soundMutePath;
+            txtUnmutePath.Text = soundUnmutePath;
+
+            // Display short names for files
+            lblMuteFile.Text = string.IsNullOrEmpty(soundMutePath) ? "Nenhum som" : Path.GetFileName(soundMutePath);
+            lblUnmuteFile.Text = string.IsNullOrEmpty(soundUnmutePath) ? "Nenhum som" : Path.GetFileName(soundUnmutePath);
+
+            // Wire custom ToggleSwitch events
+            chkPlayMute.CheckedChanged += (s, ev) => playSoundOnMute = chkPlayMute.Checked;
+            chkPlayUnmute.CheckedChanged += (s, ev) => playSoundOnUnmute = chkPlayUnmute.Checked;
+
+            // Load custom state icons
+            string iconOnPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micon.ico");
+            string iconOffPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micmute.ico");
+            string imgOnPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micon.png");
+            string imgOffPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micmute.png");
+
+            try
+            {
+                if (File.Exists(iconOnPath)) iconOn = new Icon(iconOnPath);
+                else iconOn = CreateDynamicIcon("\uE720", FluentTheme.UnmuteGreen);
+
+                if (File.Exists(iconOffPath)) iconOff = new Icon(iconOffPath);
+                else iconOff = CreateDynamicIcon("\uE721", FluentTheme.MuteRed);
+
+                iconError = CreateDynamicIcon("\uE7BA", FluentTheme.ErrorOrange);
+
+                if (File.Exists(imgOnPath)) imgOn = Image.FromFile(imgOnPath);
+                if (File.Exists(imgOffPath)) imgOff = Image.FromFile(imgOffPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error loading icons: " + ex.Message);
+            }
+
+            if (iconOn != null) this.Icon = iconOn;
+
+            // Load auto-start state
+            LoadStartupSettings();
+            chkStartWithWindows.CheckedChanged += (s, ev) => SaveStartupSettings();
+
+            LoadMicsDropdown();
             UpdateSelectedDevice();
+            
             AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
             
-            // toggle
+            // Register Keyboard Hook
+            globalHook.KeyDown += GlobalHook_KeyDown;
+            globalHook.Hook();
+
+            // Load saved hotkeys
             var hotkeyValue = registryKey.GetValue(registryKeyName);
             if (hotkeyValue != null)
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 hotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
             }
 
-            // mute 
             hotkeyValue = registryKey.GetValue(registryKeyMute);
             if (hotkeyValue != null)
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 muteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
             }
 
-            // unmute 
             hotkeyValue = registryKey.GetValue(registryKeyUnmute);
             if (hotkeyValue != null)
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 unMuteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
             }
-
-            //AudioController.AudioDeviceChanged.Subscribe(x =>
-            //{
-            //    Debug.WriteLine("{0} - {1}", x.Device.Name, x.ChangedType.ToString());
-            //});
         }
+
+        private void GlobalHook_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (MatchesHotkey(hotkey, e))
+            {
+                ToggleMicStatus();
+                e.Handled = true;
+            }
+            else if (MatchesHotkey(muteHotkey, e))
+            {
+                MuteMicStatus();
+                e.Handled = true;
+            }
+            else if (MatchesHotkey(unMuteHotkey, e))
+            {
+                UnMuteMicStatus();
+                e.Handled = true;
+            }
+        }
+
+        private bool MatchesHotkey(Hotkey hk, KeyEventArgs e)
+        {
+            if (hk == null) return false;
+
+            Keys targetKey = hk.Key;
+            Modifiers targetMod = hk.Modifier;
+
+            Keys pressedKey = e.KeyCode;
+            
+            // Normalize modifier key values triggered on separate KeyDowns
+            if (pressedKey == Keys.LControlKey || pressedKey == Keys.RControlKey) pressedKey = Keys.ControlKey;
+            if (pressedKey == Keys.LMenu || pressedKey == Keys.RMenu || pressedKey == Keys.Alt) pressedKey = Keys.Menu;
+            if (pressedKey == Keys.LShiftKey || pressedKey == Keys.RShiftKey) pressedKey = Keys.ShiftKey;
+
+            Keys normalizedTargetKey = targetKey;
+            if (normalizedTargetKey == Keys.LControlKey || normalizedTargetKey == Keys.RControlKey) normalizedTargetKey = Keys.ControlKey;
+            if (normalizedTargetKey == Keys.LMenu || normalizedTargetKey == Keys.RMenu || normalizedTargetKey == Keys.Alt) normalizedTargetKey = Keys.Menu;
+            if (normalizedTargetKey == Keys.LShiftKey || normalizedTargetKey == Keys.RShiftKey) normalizedTargetKey = Keys.ShiftKey;
+
+            if (pressedKey != normalizedTargetKey) return false;
+
+            bool shiftPressed = (e.Modifiers & Keys.Shift) == Keys.Shift;
+            bool ctrlPressed = (e.Modifiers & Keys.Control) == Keys.Control;
+            bool altPressed = (e.Modifiers & Keys.Alt) == Keys.Alt;
+
+            bool shiftMatch = ((targetMod & Modifiers.Shift) == Modifiers.Shift) == shiftPressed;
+            bool ctrlMatch = ((targetMod & Modifiers.Control) == Modifiers.Control) == ctrlPressed;
+            bool altMatch = ((targetMod & Modifiers.Alt) == Modifiers.Alt) == altPressed;
+            
+            bool winPressed = (GetKeyState(0x5B) & 0x8000) != 0 || (GetKeyState(0x5C) & 0x8000) != 0;
+            bool winMatch = ((targetMod & Modifiers.Win) == Modifiers.Win) == winPressed;
+
+            return shiftMatch && ctrlMatch && altMatch && winMatch;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, ExactSpelling = true)]
+        private static extern short GetKeyState(int keyCode);
 
         private void OnMuteChanged(DeviceMuteChangedArgs next)
         {
-            UpdateStatus(next.Device);
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => UpdateStatus(next.Device)));
+            }
+            else
+            {
+                UpdateStatus(next.Device);
+            }
         }
 
         IDisposable muteChangedSubscription;
@@ -130,9 +338,17 @@ namespace MicMute
             muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
             UpdateStatus(device);
         }
+
         public IDevice getSelectedDevice()
         {
-            return selectedDeviceId == "" ? AudioController.DefaultCaptureDevice : AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
+            try
+            {
+                return selectedDeviceId == "" ? AudioController.DefaultCaptureDevice : AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
+            }
+            catch
+            {
+                return AudioController.DefaultCaptureDevice;
+            }
         }
 
         public void UpdateSelectedDevice()
@@ -140,17 +356,132 @@ namespace MicMute
             UpdateDevice(getSelectedDevice());
         }
 
-        Icon iconOff = Properties.Resources.off;
-        Icon iconOn = Properties.Resources.on;
-        Icon iconError = Properties.Resources.error;
-
-        public void PlaySound(string relativePath)
+        public string ResolveSoundPath(string path)
         {
-            string path = Path.Combine(Application.StartupPath, relativePath);
-            if (File.Exists(path))
+            if (string.IsNullOrEmpty(path)) return "";
+            if (Path.IsPathRooted(path))
             {
-                SoundPlayer simpleSound = new SoundPlayer(path);
-                simpleSound.Play();
+                if (File.Exists(path)) return path;
+                string relativeName = Path.GetFileName(path);
+                string localFallback = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "sounds", relativeName);
+                if (File.Exists(localFallback)) return localFallback;
+            }
+            else
+            {
+                string localPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path);
+                if (File.Exists(localPath)) return localPath;
+            }
+            return path;
+        }
+
+        private void LoadStartupSettings()
+        {
+            try
+            {
+                string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(runKey, false))
+                {
+                    if (key != null)
+                        chkStartWithWindows.Checked = key.GetValue("MicMute") != null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error loading startup registry: " + ex.Message);
+            }
+        }
+
+        private void SaveStartupSettings()
+        {
+            try
+            {
+                string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(runKey, true))
+                {
+                    if (key != null)
+                    {
+                        if (chkStartWithWindows.Checked)
+                            key.SetValue("MicMute", "\"" + Application.ExecutablePath + "\"");
+                        else
+                            key.DeleteValue("MicMute", false);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error saving startup registry: " + ex.Message);
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("winmm.dll")]
+        private static extern long mciSendString(string command, System.Text.StringBuilder returnValue, int returnLength, IntPtr winhandle);
+
+        public void PlaySoundFile(string filePath)
+        {
+            string resolvedPath = ResolveSoundPath(filePath);
+            if (string.IsNullOrEmpty(resolvedPath) || !File.Exists(resolvedPath))
+            {
+                return;
+            }
+
+            try
+            {
+                mciSendString("close micMuteSound", null, 0, IntPtr.Zero);
+                mciSendString(string.Format("open \"{0}\" type mpegvideo alias micMuteSound", resolvedPath), null, 0, IntPtr.Zero);
+                mciSendString("play micMuteSound", null, 0, IntPtr.Zero);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error playing sound: " + ex.Message);
+            }
+        }
+
+        private Icon CreateDynamicIcon(string glyph, Color accentColor)
+        {
+            try
+            {
+                int size = 32;
+                Bitmap bmp = new Bitmap(size, size);
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                    g.Clear(Color.Transparent);
+
+                    using (SolidBrush brush = new SolidBrush(accentColor))
+                    {
+                        g.FillEllipse(brush, 1, 1, size - 2, size - 2);
+                    }
+
+                    using (Font font = new Font("Segoe MDL2 Assets", 15F, FontStyle.Regular, GraphicsUnit.Pixel))
+                    using (Brush textBrush = new SolidBrush(Color.White))
+                    {
+                        SizeF glyphSize = g.MeasureString(glyph, font);
+                        float x = (size - glyphSize.Width) / 2f;
+                        float y = (size - glyphSize.Height) / 2f;
+                        g.DrawString(glyph, font, textBrush, x, y);
+                    }
+                }
+                
+                IntPtr hIcon = bmp.GetHicon();
+                bmp.Dispose();
+                return Icon.FromHandle(hIcon);
+            }
+            catch
+            {
+                return SystemIcons.Application;
+            }
+        }
+
+        private void SetTrayIcon(Icon newIcon)
+        {
+            Icon oldIcon = currentTrayIcon;
+            currentTrayIcon = newIcon;
+            this.icon.Icon = newIcon;
+            if (oldIcon != null && oldIcon != iconOn && oldIcon != iconOff && oldIcon != iconError)
+            {
+                DestroyIcon(oldIcon.Handle);
+                oldIcon.Dispose();
             }
         }
 
@@ -159,41 +490,90 @@ namespace MicMute
             MicStatus newStatus = (device != null) ? (device.IsMuted ? MicStatus.Off : MicStatus.On) : MicStatus.Error;
             bool playSound = currentStatus != MicStatus.Initial && currentStatus != newStatus;
             currentStatus = newStatus;
+
+            string statusText = "";
+            Color statusColor = Color.Gray;
+            string statusGlyph = "";
+
             switch (currentStatus)
             {
                 case MicStatus.On:
-                    UpdateIcon(iconOn, device.FullName);
-                    if (playSound) PlaySound("on.wav");
+                    statusText = "ATIVO";
+                    statusColor = FluentTheme.UnmuteGreen;
+                    statusGlyph = "\uE720"; // Microphone
+                    
+                    SetTrayIcon(iconOn ?? CreateDynamicIcon(statusGlyph, statusColor));
+                    if (iconOn != null) this.Icon = iconOn;
+                    this.icon.Text = device.FullName.Substring(0, Math.Min(device.FullName.Length, 63));
+                    
+                    if (playSound && playSoundOnUnmute) PlaySoundFile(soundUnmutePath);
                     break;
+                    
                 case MicStatus.Off:
-                    UpdateIcon(iconOff, device.FullName);
-                    if (playSound) PlaySound("off.wav");
+                    statusText = "MUTADO";
+                    statusColor = FluentTheme.MuteRed;
+                    statusGlyph = "\uE721"; // Microphone off
+                    
+                    SetTrayIcon(iconOff ?? CreateDynamicIcon(statusGlyph, statusColor));
+                    if (iconOff != null) this.Icon = iconOff;
+                    this.icon.Text = device.FullName.Substring(0, Math.Min(device.FullName.Length, 63));
+                    
+                    if (playSound && playSoundOnMute) PlaySoundFile(soundMutePath);
                     break;
+                    
                 case MicStatus.Error:
-                    UpdateIcon(iconError, "< No device >");
-                    if (playSound) PlaySound("error.wav");
+                    statusText = "ERRO";
+                    statusColor = FluentTheme.ErrorOrange;
+                    statusGlyph = "\uE7BA"; // Warning
+                    
+                    SetTrayIcon(iconError ?? CreateDynamicIcon(statusGlyph, statusColor));
+                    if (iconError != null) this.Icon = iconError;
+                    this.icon.Text = "< Nenhum dispositivo >";
+                    
+                    if (playSound) PlaySoundFile("error.wav");
                     break;
             }
-        }
-        private void UpdateIcon(Icon icon, string tooltipText)
-        {
-            this.icon.Icon = icon;
-            this.icon.Text = tooltipText.Substring(0, Math.Min(tooltipText.Length, 63));
+
+            // Update main window controls
+            lblStatusText.Text = statusText;
+            lblStatusText.ForeColor = statusColor;
+            lblDeviceName.Text = device != null ? device.FullName : "< Nenhum dispositivo detectado >";
+            
+            // Customize visual status button to use the dark theme background and a modern border
+            btnToggleMic.Image = currentStatus == MicStatus.On ? imgOn : (currentStatus == MicStatus.Off ? imgOff : null);
+            btnToggleMic.Text = btnToggleMic.Image == null ? statusGlyph : "";
+            btnToggleMic.ForeColor = statusColor;
+            btnToggleMic.CustomBackColor = System.Drawing.Color.FromArgb(32, 32, 32);
+            btnToggleMic.CustomHoverColor = System.Drawing.Color.FromArgb(45, 45, 45);
+            btnToggleMic.CustomPressedColor = System.Drawing.Color.FromArgb(20, 20, 20);
+            btnToggleMic.CustomBorderColor = FluentTheme.CardBorder;
         }
 
         public async void ToggleMicStatus()
         {
-            await getSelectedDevice()?.ToggleMuteAsync();
+            var dev = getSelectedDevice();
+            if (dev != null)
+            {
+                await dev.ToggleMuteAsync();
+            }
         }
 
         public async void MuteMicStatus()
         {
-            await getSelectedDevice()?.SetMuteAsync(true);
+            var dev = getSelectedDevice();
+            if (dev != null)
+            {
+                await dev.SetMuteAsync(true);
+            }
         }
 
         public async void UnMuteMicStatus()
         {
-            await getSelectedDevice()?.SetMuteAsync(false);
+            var dev = getSelectedDevice();
+            if (dev != null)
+            {
+                await dev.SetMuteAsync(false);
+            }
         }
 
         private void Icon_MouseClick(object sender, MouseEventArgs e)
@@ -206,163 +586,329 @@ namespace MicMute
 
         private void HotkeyToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            // toggle
-            if (hotkey != null)
-            {
-                hotkeyTextBox.Hotkey = hotkey;
-                if (hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Unbind(hotkey);
-            }
-
-            // mute
-            if (muteHotkey != null)
-            {
-                muteTextBox.Hotkey = muteHotkey;
-                if (hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Unbind(muteHotkey);
-            }
-
-            // unmute
-            if (unMuteHotkey != null)
-            {
-                unmuteTextBox.Hotkey = unMuteHotkey;
-                if (hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Unbind(unMuteHotkey);
-            }
+            // Set hotkeys inside textboxes
+            if (hotkey != null) hotkeyTextBox.Hotkey = hotkey;
+            if (muteHotkey != null) muteTextBox.Hotkey = muteHotkey;
+            if (unMuteHotkey != null) unmuteTextBox.Hotkey = unMuteHotkey;
 
             MyShow();
         }
 
-        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        private void SaveSettings()
         {
-            if (MyVisible)
+            try
             {
-                MyHide();
-                e.Cancel = true;
-
+                // Save Toggle Hotkey
                 hotkey = hotkeyTextBox.Hotkey;
-
                 if (hotkey == null)
                 {
                     registryKey.DeleteValue(registryKeyName, false);
                 }
                 else
                 {
-                    if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey))
-                    {
-                        registryKey.SetValue(registryKeyName, hotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
-                    }
+                    registryKey.SetValue(registryKeyName, hotkey);
                 }
 
+                // Save Mute Hotkey
                 muteHotkey = muteTextBox.Hotkey;
-
                 if (muteHotkey == null)
                 {
                     registryKey.DeleteValue(registryKeyMute, false);
                 }
                 else
                 {
-                    if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey))
-                    {
-                        registryKey.SetValue(registryKeyMute, muteHotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
-                    }
+                    registryKey.SetValue(registryKeyMute, muteHotkey);
                 }
 
-
+                // Save Unmute Hotkey
                 unMuteHotkey = unmuteTextBox.Hotkey;
-
                 if (unMuteHotkey == null)
                 {
                     registryKey.DeleteValue(registryKeyUnmute, false);
                 }
                 else
                 {
-                    if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey))
-                    {
-                        registryKey.SetValue(registryKeyUnmute, unMuteHotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
-                    }
+                    registryKey.SetValue(registryKeyUnmute, unMuteHotkey);
                 }
 
+                // Save audio feedback settings
+                playSoundOnMute = chkPlayMute.Checked;
+                playSoundOnUnmute = chkPlayUnmute.Checked;
+                soundMutePath = txtMutePath.Text;
+                soundUnmutePath = txtUnmutePath.Text;
+
+                registryKey.SetValue(registryPlayMute, playSoundOnMute ? 1 : 0);
+                registryKey.SetValue(registryPlayUnmute, playSoundOnUnmute ? 1 : 0);
+                registryKey.SetValue(registrySoundMutePath, soundMutePath);
+                registryKey.SetValue(registrySoundUnmutePath, soundUnmutePath);
+
+                SaveStartupSettings();
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error saving settings: " + ex.Message);
+            }
+        }
+
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (!isExiting && MyVisible)
+            {
+                MyHide();
+                e.Cancel = true;
+                SaveSettings();
+            }
+            else if (isExiting)
+            {
+                SaveSettings();
+            }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            globalHook.Unhook();
+            base.OnFormClosed(e);
         }
 
         private void ButtonReset_Click(object sender, EventArgs e)
         {
             hotkeyTextBox.Hotkey = null;
-            hotkeyTextBox.Text = "None";
+            hotkeyTextBox.Text = "Nenhum";
         }
+        
         private void muteReset_Click(object sender, EventArgs e)
         {
             muteTextBox.Hotkey = null;
-            muteTextBox.Text = "None";
+            muteTextBox.Text = "Nenhum";
         }
 
         private void unmuteReset_Click(object sender, EventArgs e)
         {
             unmuteTextBox.Hotkey = null;
-            unmuteTextBox.Text = "None";
+            unmuteTextBox.Text = "Nenhum";
         }
 
         private void ExitMenuItem_Click(object sender, EventArgs e)
         {
+            isExiting = true;
+            globalHook.Unhook();
+            SetTrayIcon(null);
             Application.Exit();
         }
 
         private void toolStripMenuItem2_Click(object sender, EventArgs e)
         {
-            micSelectorForm = new MicSelectorForm();
-            ComboBox comboBox = micSelectorForm.cbMics;
-            comboBox.Items.Clear();
+            MyShow();
+            cbMics.Focus();
+        }
 
-            bool registryExists = false;
+        private void CbMics_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (isLoadingMics) return;
 
-            ComboboxItem defaultItem = new ComboboxItem();
-            defaultItem.Text = DEFAULT_RECORDING_DEVICE;
-            defaultItem.deviceId = "";
-            comboBox.Items.Add(defaultItem);
-
-            if (selectedDeviceId == "")
+            ComboboxItem selectedItem = (ComboboxItem)cbMics.SelectedItem;
+            if (selectedItem != null)
             {
-                registryExists = true;
-                comboBox.SelectedIndex = comboBox.Items.Count - 1;
+                registryKey.SetValue(registryDeviceId, selectedItem.deviceId);
+                registryKey.SetValue(registryDeviceName, selectedItem.Text);
+                selectedDeviceName = selectedItem.Text;
+                selectedDeviceId = selectedItem.deviceId;
+                UpdateSelectedDevice();
             }
+        }
 
-            foreach (CoreAudioDevice device in AudioController.GetCaptureDevices())
+        private void BtnToggleMic_Click(object sender, EventArgs e)
+        {
+            ToggleMicStatus();
+        }
+
+        private void BtnBrowseMute_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
             {
-                if (device.State == DeviceState.Active)
+                openFileDialog.Filter = "Arquivos de áudio (*.mp3;*.wav)|*.mp3;*.wav|Todos os arquivos (*.*)|*.*";
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    ComboboxItem item = new ComboboxItem();
-                    item.Text = device.FullName;
-                    item.deviceId = device.Id.ToString();
-                    comboBox.Items.Add(item);
-
-                    if (item.deviceId == selectedDeviceId)
-                    {
-                        registryExists = true;
-                        comboBox.SelectedIndex = comboBox.Items.Count - 1;
-                    }
+                    txtMutePath.Text = openFileDialog.FileName;
+                    soundMutePath = openFileDialog.FileName;
+                    lblMuteFile.Text = Path.GetFileName(openFileDialog.FileName);
                 }
             }
-
-            if (!registryExists) {
-                ComboboxItem item = new ComboboxItem();
-                item.Text = "(unavailable) " + registryDeviceName.ToString();
-                item.deviceId = selectedDeviceId.ToString();
-                comboBox.Items.Add(item);
-                comboBox.SelectedIndex = comboBox.Items.Count - 1;
-            }
-            DialogResult result = micSelectorForm.ShowDialog();
-            Console.WriteLine(result);
-            ComboboxItem selectedItem = (ComboboxItem)comboBox.SelectedItem;
-
-            registryKey.SetValue(registryDeviceId, selectedItem.deviceId);
-            registryKey.SetValue(registryDeviceName, selectedItem.Text);
-            selectedDeviceName = selectedItem.Text;
-            selectedDeviceId = selectedItem.deviceId;
-
-            micSelectorForm.Dispose();
-
-            UpdateSelectedDevice();
         }
+
+        private void BtnBrowseUnmute_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.Filter = "Arquivos de áudio (*.mp3;*.wav)|*.mp3;*.wav|Todos os arquivos (*.*)|*.*";
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    txtUnmutePath.Text = openFileDialog.FileName;
+                    soundUnmutePath = openFileDialog.FileName;
+                    lblUnmuteFile.Text = Path.GetFileName(openFileDialog.FileName);
+                }
+            }
+        }
+
+        private void BtnAbout_Click(object sender, EventArgs e)
+        {
+            using (AboutForm about = new AboutForm())
+            {
+                about.ShowDialog(this);
+            }
+        }
+    }
+
+    public class ComboboxItem
+    {
+        public string Text { get; set; }
+        public string deviceId { get; set; }
+
+        public override string ToString()
+        {
+            return Text;
+        }
+    }
+
+    public class FluentMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public FluentMenuRenderer() : base(new FluentColorTable()) { }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item.Selected)
+            {
+                Rectangle rect = new Rectangle(4, 2, e.Item.Width - 8, e.Item.Height - 4);
+                using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, 4))
+                using (SolidBrush brush = new SolidBrush(Color.FromArgb(70, 70, 70)))
+                {
+                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    e.Graphics.FillPath(brush, path);
+                }
+            }
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = FluentTheme.TextPrimary;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
+        {
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(45, 45, 45)))
+            {
+                e.Graphics.FillRectangle(brush, e.AffectedBounds);
+            }
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
+        {
+            // Do not paint default border
+        }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            using (Pen pen = new Pen(FluentTheme.CardBorder, 1))
+            {
+                e.Graphics.DrawLine(pen, 10, e.Item.Height / 2, e.ToolStrip.Width - 10, e.Item.Height / 2);
+            }
+        }
+    }
+
+    public class FluentColorTable : ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground => Color.FromArgb(45, 45, 45);
+        public override Color MenuBorder => Color.FromArgb(58, 58, 58);
+        public override Color MenuItemSelected => Color.FromArgb(70, 70, 70);
+        public override Color MenuItemBorder => Color.Transparent;
+    }
+
+    public class GlobalKeyboardHook
+    {
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_SYSKEYDOWN = 0x0104;
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        private LowLevelKeyboardProc _proc;
+        private IntPtr _hookID = IntPtr.Zero;
+
+        public event KeyEventHandler KeyDown;
+
+        public GlobalKeyboardHook()
+        {
+            _proc = HookCallback;
+        }
+
+        public void Hook()
+        {
+            _hookID = SetHook(_proc);
+        }
+
+        public void Unhook()
+        {
+            if (_hookID != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_hookID);
+                _hookID = IntPtr.Zero;
+            }
+        }
+
+        private IntPtr SetHook(LowLevelKeyboardProc proc)
+        {
+            using (System.Diagnostics.Process curProcess = System.Diagnostics.Process.GetCurrentProcess())
+            using (System.Diagnostics.ProcessModule curModule = curProcess.MainModule)
+            {
+                return SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0 && (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
+            {
+                int vkCode = System.Runtime.InteropServices.Marshal.ReadInt32(lParam);
+                Keys key = (Keys)vkCode;
+
+                KeyEventArgs args = new KeyEventArgs(key | ModifierKeys);
+                KeyDown?.Invoke(this, args);
+                if (args.Handled)
+                {
+                    return (IntPtr)1;
+                }
+            }
+            return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+
+        private Keys ModifierKeys
+        {
+            get
+            {
+                Keys modifiers = Keys.None;
+                if ((GetKeyState(0x10) & 0x8000) != 0) modifiers |= Keys.Shift;      // VK_SHIFT
+                if ((GetKeyState(0x11) & 0x8000) != 0) modifiers |= Keys.Control;    // VK_CONTROL
+                if ((GetKeyState(0x12) & 0x8000) != 0) modifiers |= Keys.Alt;        // VK_MENU
+                return modifiers;
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, ExactSpelling = true)]
+        private static extern short GetKeyState(int keyCode);
     }
 }
