@@ -7,7 +7,7 @@ DefaultGroupName=MicMute
 OutputBaseFilename=MicMute_Setup
 Compression=lzma
 SolidCompression=yes
-OutputDir=d:\Developer\sandbox\MicMute\bin\Installer
+OutputDir=d:\Developer\sandbox\MicMute\bin\MicMute Installer
 SetupIconFile=favicon.ico
 ArchitecturesInstallIn64BitMode=x64compatible
 
