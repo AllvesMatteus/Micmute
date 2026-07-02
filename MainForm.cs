@@ -169,20 +169,29 @@ namespace MicMute
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
+            iconContextMenu.Padding = new Padding(0, 2, 0, 2);
             iconContextMenu.AutoSize = true;
             iconContextMenu.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
             foreach (ToolStripItem item in iconContextMenu.Items)
             {
                 item.Padding = new Padding(12, 8, 12, 8);
+                item.Margin = new Padding(0);
             }
 
-            // Apply modern native DWM rounded corners to context menu window on Windows 11
+            // Apply modern native DWM rounded corners to context menu window on Windows 11 and force region-based rounding
             iconContextMenu.Opened += (s, ev) =>
             {
                 try
                 {
                     int cornerPreference = 3; // DWMWCP_ROUNDSMALL (Small rounded corners)
                     DwmSetWindowAttribute(iconContextMenu.Handle, 33, ref cornerPreference, sizeof(int));
+                }
+                catch { }
+
+                try
+                {
+                    Rectangle rect = new Rectangle(0, 0, iconContextMenu.Width, iconContextMenu.Height);
+                    iconContextMenu.Region = new Region(FluentTheme.GetRoundedPath(rect, 8));
                 }
                 catch { }
             };
@@ -704,7 +713,7 @@ namespace MicMute
                 }
                 else
                 {
-                    registryKey.SetValue(registryKeyName, hotkey);
+                    registryKey.SetValue(registryKeyName, hotkey.ToString());
                 }
 
                 // Save Mute Hotkey
@@ -715,7 +724,7 @@ namespace MicMute
                 }
                 else
                 {
-                    registryKey.SetValue(registryKeyMute, muteHotkey);
+                    registryKey.SetValue(registryKeyMute, muteHotkey.ToString());
                 }
 
                 // Save Unmute Hotkey
@@ -726,7 +735,7 @@ namespace MicMute
                 }
                 else
                 {
-                    registryKey.SetValue(registryKeyUnmute, unMuteHotkey);
+                    registryKey.SetValue(registryKeyUnmute, unMuteHotkey.ToString());
                 }
 
                 // Save audio feedback settings
@@ -1069,6 +1078,14 @@ namespace MicMute
     {
         public FluentMenuRenderer() : base(new FluentColorTable()) { }
 
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(45, 45, 45)))
+            {
+                e.Graphics.FillRectangle(brush, e.AffectedBounds);
+            }
+        }
+
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
             if (e.Item.Selected)
@@ -1099,7 +1116,13 @@ namespace MicMute
 
         protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
         {
-            // Do not paint default border
+            Rectangle rect = new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
+            using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, 8))
+            using (Pen pen = new Pen(FluentTheme.CardBorder, 1))
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.DrawPath(pen, path);
+            }
         }
 
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
