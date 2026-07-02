@@ -185,16 +185,30 @@ namespace MicMute
             playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
 
             soundMutePath = (string)registryKey.GetValue(registrySoundMutePath);
-            if (string.IsNullOrEmpty(soundMutePath))
+            if (string.IsNullOrEmpty(soundMutePath) || !File.Exists(ResolveSoundPath(soundMutePath)) || soundMutePath == @"assets\sounds\muted.wav")
             {
                 string mp3Path = @"assets\sounds\muted.mp3";
-                soundMutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)) ? mp3Path : @"assets\sounds\muted.wav";
+                if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                {
+                    soundMutePath = mp3Path;
+                }
+                else
+                {
+                    soundMutePath = @"assets\sounds\muted.wav";
+                }
             }
             soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath);
-            if (string.IsNullOrEmpty(soundUnmutePath))
+            if (string.IsNullOrEmpty(soundUnmutePath) || !File.Exists(ResolveSoundPath(soundUnmutePath)) || soundUnmutePath == @"assets\sounds\unmuted.wav")
             {
                 string mp3Path = @"assets\sounds\unmuted.mp3";
-                soundUnmutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)) ? mp3Path : @"assets\sounds\unmuted.wav";
+                if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                {
+                    soundUnmutePath = mp3Path;
+                }
+                else
+                {
+                    soundUnmutePath = @"assets\sounds\unmuted.wav";
+                }
             }
 
             soundVolume = registryKey.GetValue("SoundVolume") != null ? Convert.ToInt32(registryKey.GetValue("SoundVolume")) : 100;

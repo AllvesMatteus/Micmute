@@ -231,7 +231,7 @@ namespace MicMute
             this.panelFeedback.Location = new System.Drawing.Point(15, 165);
             this.panelFeedback.Name = "panelFeedback";
             this.panelFeedback.Radius = 8;
-            this.panelFeedback.Size = new System.Drawing.Size(240, 155);
+            this.panelFeedback.Size = new System.Drawing.Size(240, 185);
             this.panelFeedback.TabIndex = 1;
             // 
             // lblFeedbackTitle
@@ -303,7 +303,7 @@ namespace MicMute
             // 
             this.chkPlayUnmute.Checked = false;
             this.chkPlayUnmute.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.chkPlayUnmute.Location = new System.Drawing.Point(15, 95);
+            this.chkPlayUnmute.Location = new System.Drawing.Point(15, 90);
             this.chkPlayUnmute.Name = "chkPlayUnmute";
             this.chkPlayUnmute.Size = new System.Drawing.Size(50, 26);
             this.chkPlayUnmute.TabIndex = 5;
@@ -314,7 +314,7 @@ namespace MicMute
             this.lblPlayUnmuteText.BackColor = System.Drawing.Color.Transparent;
             this.lblPlayUnmuteText.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblPlayUnmuteText.ForeColor = System.Drawing.Color.White;
-            this.lblPlayUnmuteText.Location = new System.Drawing.Point(70, 98);
+            this.lblPlayUnmuteText.Location = new System.Drawing.Point(70, 93);
             this.lblPlayUnmuteText.Name = "lblPlayUnmuteText";
             this.lblPlayUnmuteText.Size = new System.Drawing.Size(117, 15);
             this.lblPlayUnmuteText.TabIndex = 6;
@@ -331,7 +331,7 @@ namespace MicMute
             this.btnBrowseUnmute.ForeColor = System.Drawing.Color.White;
             this.btnBrowseUnmute.IconGlyph = "";
             this.btnBrowseUnmute.IconSize = 10F;
-            this.btnBrowseUnmute.Location = new System.Drawing.Point(195, 94);
+            this.btnBrowseUnmute.Location = new System.Drawing.Point(195, 89);
             this.btnBrowseUnmute.Name = "btnBrowseUnmute";
             this.btnBrowseUnmute.Radius = 4;
             this.btnBrowseUnmute.Size = new System.Drawing.Size(30, 26);
@@ -344,7 +344,7 @@ namespace MicMute
             this.lblUnmuteFile.BackColor = System.Drawing.Color.Transparent;
             this.lblUnmuteFile.Font = new System.Drawing.Font("Segoe UI", 7.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblUnmuteFile.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(170)))), ((int)(((byte)(170)))), ((int)(((byte)(170)))));
-            this.lblUnmuteFile.Location = new System.Drawing.Point(70, 120);
+            this.lblUnmuteFile.Location = new System.Drawing.Point(70, 115);
             this.lblUnmuteFile.Name = "lblUnmuteFile";
             this.lblUnmuteFile.Size = new System.Drawing.Size(120, 16);
             this.lblUnmuteFile.TabIndex = 8;
@@ -356,7 +356,7 @@ namespace MicMute
             this.lblVolumeIcon.BackColor = System.Drawing.Color.Transparent;
             this.lblVolumeIcon.Font = new System.Drawing.Font("Segoe MDL2 Assets", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblVolumeIcon.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(170)))), ((int)(((byte)(170)))), ((int)(((byte)(170)))));
-            this.lblVolumeIcon.Location = new System.Drawing.Point(15, 128);
+            this.lblVolumeIcon.Location = new System.Drawing.Point(15, 151);
             this.lblVolumeIcon.Name = "lblVolumeIcon";
             this.lblVolumeIcon.Size = new System.Drawing.Size(16, 15);
             this.lblVolumeIcon.TabIndex = 9;
@@ -368,7 +368,7 @@ namespace MicMute
             this.lblVolumeValue.BackColor = System.Drawing.Color.Transparent;
             this.lblVolumeValue.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblVolumeValue.ForeColor = System.Drawing.Color.White;
-            this.lblVolumeValue.Location = new System.Drawing.Point(35, 128);
+            this.lblVolumeValue.Location = new System.Drawing.Point(35, 151);
             this.lblVolumeValue.Name = "lblVolumeValue";
             this.lblVolumeValue.Size = new System.Drawing.Size(35, 15);
             this.lblVolumeValue.TabIndex = 10;
@@ -383,7 +383,7 @@ namespace MicMute
             this.btnVolDown.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(40)))), ((int)(((byte)(40)))));
             this.btnVolDown.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnVolDown.ForeColor = System.Drawing.Color.White;
-            this.btnVolDown.Location = new System.Drawing.Point(165, 124);
+            this.btnVolDown.Location = new System.Drawing.Point(165, 148);
             this.btnVolDown.Name = "btnVolDown";
             this.btnVolDown.Radius = 3;
             this.btnVolDown.Size = new System.Drawing.Size(25, 22);
@@ -400,7 +400,7 @@ namespace MicMute
             this.btnVolUp.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(40)))), ((int)(((byte)(40)))));
             this.btnVolUp.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnVolUp.ForeColor = System.Drawing.Color.White;
-            this.btnVolUp.Location = new System.Drawing.Point(195, 124);
+            this.btnVolUp.Location = new System.Drawing.Point(195, 148);
             this.btnVolUp.Name = "btnVolUp";
             this.btnVolUp.Radius = 3;
             this.btnVolUp.Size = new System.Drawing.Size(25, 22);
@@ -572,7 +572,7 @@ namespace MicMute
             this.panelGeneral.Controls.Add(this.chkStartWithWindows);
             this.panelGeneral.Controls.Add(this.btnAbout);
             this.panelGeneral.Controls.Add(this.cbLanguage);
-            this.panelGeneral.Location = new System.Drawing.Point(15, 330);
+            this.panelGeneral.Location = new System.Drawing.Point(15, 360);
             this.panelGeneral.Name = "panelGeneral";
             this.panelGeneral.Radius = 8;
             this.panelGeneral.Size = new System.Drawing.Size(490, 50);
@@ -640,7 +640,7 @@ namespace MicMute
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(32)))), ((int)(((byte)(32)))), ((int)(((byte)(32)))));
-            this.ClientSize = new System.Drawing.Size(520, 395);
+            this.ClientSize = new System.Drawing.Size(520, 425);
             this.Controls.Add(this.panelGeneral);
             this.Controls.Add(this.panelHotkeys);
             this.Controls.Add(this.panelFeedback);
