@@ -188,6 +188,20 @@ namespace MicMute
             panelHotkeys.Controls.Add(muteContainer);
             panelHotkeys.Controls.Add(unmuteContainer);
 
+            // Register dynamic TextChanged translators
+            hotkeyTextBox.TextChanged += (s, ev) => {
+                string translated = TranslateHotkeyText(hotkeyTextBox.Text, currentLang);
+                if (hotkeyTextBox.Text != translated) hotkeyTextBox.Text = translated;
+            };
+            muteTextBox.TextChanged += (s, ev) => {
+                string translated = TranslateHotkeyText(muteTextBox.Text, currentLang);
+                if (muteTextBox.Text != translated) muteTextBox.Text = translated;
+            };
+            unmuteTextBox.TextChanged += (s, ev) => {
+                string translated = TranslateHotkeyText(unmuteTextBox.Text, currentLang);
+                if (unmuteTextBox.Text != translated) unmuteTextBox.Text = translated;
+            };
+
             // Load registry values
             selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
             selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
@@ -747,19 +761,19 @@ namespace MicMute
         private void ButtonReset_Click(object sender, EventArgs e)
         {
             hotkeyTextBox.Hotkey = null;
-            hotkeyTextBox.Text = "Nenhum";
+            hotkeyTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
         }
         
         private void muteReset_Click(object sender, EventArgs e)
         {
             muteTextBox.Hotkey = null;
-            muteTextBox.Text = "Nenhum";
+            muteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
         }
 
         private void unmuteReset_Click(object sender, EventArgs e)
         {
             unmuteTextBox.Hotkey = null;
-            unmuteTextBox.Text = "Nenhum";
+            unmuteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
         }
 
         private void ExitMenuItem_Click(object sender, EventArgs e)
@@ -928,6 +942,11 @@ namespace MicMute
                 toolStripMenuItem1.Text = "Fechar";
             }
 
+            // Translate the textbox text values
+            hotkeyTextBox.Text = TranslateHotkeyText(hotkeyTextBox.Text, lang);
+            muteTextBox.Text = TranslateHotkeyText(muteTextBox.Text, lang);
+            unmuteTextBox.Text = TranslateHotkeyText(unmuteTextBox.Text, lang);
+
             // Refresh device dropdown with translated default device name
             LoadMicsDropdown();
 
@@ -954,6 +973,72 @@ namespace MicMute
             soundVolume = Math.Min(100, soundVolume + 10);
             lblVolumeValue.Text = soundVolume + "%";
             SaveSettings();
+        }
+
+        private string TranslateHotkeyText(string text, string lang)
+        {
+            if (string.IsNullOrEmpty(text)) return lang == "EN" ? "None" : "Nenhum";
+            if (text == "Nenhum" && lang == "EN") return "None";
+            if (text == "None" && lang == "PT") return "Nenhum";
+
+            if (lang == "EN")
+            {
+                string result = text
+                    .Replace("Nenhum", "None")
+                    .Replace("Control", "Ctrl")
+                    .Replace("Retorno", "Enter")
+                    .Replace("Retroceder", "Backspace")
+                    .Replace("Espaço", "Space")
+                    .Replace("Esquerda", "Left")
+                    .Replace("Direita", "Right")
+                    .Replace("Acima", "Up")
+                    .Replace("Abaixo", "Down")
+                    .Replace("Menu", "Menu")
+                    .Replace("Acento til", "Tilde")
+                    .Replace("Acento circunflexo", "Circumflex")
+                    .Replace("Acento agudo", "Acute")
+                    .Replace("Vírgula", "Comma")
+                    .Replace("Ponto", "Period")
+                    .Replace("Barra", "Slash")
+                    .Replace("Barra invertida", "Backslash")
+                    .Replace("Mais", "Plus")
+                    .Replace("Menos", "Minus")
+                    .Replace("Igual", "Equal")
+                    .Replace("Multiplicar", "Multiply")
+                    .Replace("Dividir", "Divide")
+                    .Replace("Somar", "Add")
+                    .Replace("Subtrair", "Subtract")
+                    .Replace("Decimal", "Decimal");
+                return result;
+            }
+            else
+            {
+                string result = text
+                    .Replace("None", "Nenhum")
+                    .Replace("Ctrl", "Control")
+                    .Replace("Enter", "Retorno")
+                    .Replace("Backspace", "Retroceder")
+                    .Replace("Space", "Espaço")
+                    .Replace("Left", "Esquerda")
+                    .Replace("Right", "Direita")
+                    .Replace("Up", "Acima")
+                    .Replace("Down", "Abaixo")
+                    .Replace("Tilde", "Acento til")
+                    .Replace("Circumflex", "Acento circunflexo")
+                    .Replace("Acute", "Acento agudo")
+                    .Replace("Comma", "Vírgula")
+                    .Replace("Period", "Ponto")
+                    .Replace("Slash", "Barra")
+                    .Replace("Backslash", "Barra invertida")
+                    .Replace("Plus", "Mais")
+                    .Replace("Minus", "Menos")
+                    .Replace("Equal", "Igual")
+                    .Replace("Multiply", "Multiplicar")
+                    .Replace("Divide", "Dividir")
+                    .Replace("Add", "Somar")
+                    .Replace("Subtract", "Subtrair");
+                return result;
+            }
         }
     }
 

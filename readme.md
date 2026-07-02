@@ -30,8 +30,9 @@ Projetado com uma interface escura (Dark Theme) moderna no estilo Windows 11, o 
 ## 🛠️ Como Instalar e Executar
 
 1. **Baixe o Instalador**: Acesse a aba de [Releases](https://github.com/AllvesMatteus/MicMute/releases) e faça o download do `MicMute_Setup.exe`.
-2. **Execute a Instalação**: Siga os passos na tela e selecione a pasta de instalação desejada (o padrão é `C:\Program Files\MicMute`).
-3. **Inicie o Aplicativo**: O MicMute iniciará minimizado diretamente na sua bandeja do sistema (ao lado do relógio).
+2. **Requisitos de Sistema**: O aplicativo roda em qualquer versão do Windows (Windows 7 SP1, 8, 8.1, 10, 11) com o **Microsoft .NET Framework 4.8**. O instalador verificará a presença dele automaticamente. Todas as dependências adicionais (.DLLs) estão totalmente embutidas no executável principal.
+3. **Execute a Instalação**: Siga os passos na tela e selecione a pasta de instalação desejada (o padrão é `C:\Program Files (x86)\MicMute`).
+4. **Inicie o Aplicativo**: O MicMute iniciará minimizado diretamente na sua bandeja do sistema (ao lado do relógio).
 
 ---
 
@@ -42,15 +43,15 @@ Você pode registrar três tipos de atalhos globais diferentes dentro do app:
 2. **Mutar (Mute)**: Atalho específico apenas para silenciar.
 3. **Desmutar (Unmute)**: Atalho específico apenas para ativar.
 
-*Basta clicar no campo correspondente, digitar a combinação desejada e ela será salva automaticamente.*
+*Basta clicar no campo correspondente, digitar a combinação desejada e ela será salva automaticamente. Os nomes das teclas e o status "Nenhum" adaptam-se automaticamente ao idioma inglês se selecionado.*
 
 ---
 
 ## 🔊 Customização de Sons de Feedback
 
 O aplicativo busca os arquivos de som nas seguintes pastas relativas ao executável:
-- Mutado: `assets/sounds/muted.wav`
-- Ativado: `assets/sounds/unmuted.wav`
+- Mutado: `assets/sounds/muted.mp3`
+- Ativado: `assets/sounds/unmuted.mp3`
 
 Você pode substituir esses arquivos por quaisquer sons de sua preferência no formato `.wav` ou `.mp3` para personalizar o feedback sonoro do seu sistema.
 

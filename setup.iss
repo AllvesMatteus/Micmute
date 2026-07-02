@@ -49,3 +49,34 @@ Name: "{commondesktop}\MicMute"; Filename: "{app}\MicMute.exe"
 
 [Run]
 Filename: "{app}\MicMute.exe"; Description: "Iniciar o MicMute"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function IsDotNetDetector(): Boolean;
+var
+  key: string;
+  release: Cardinal;
+begin
+  Result := False;
+  key := 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full';
+  if RegQueryDWordValue(HKLM, key, 'Release', release) then
+  begin
+    if release >= 528040 then // 528040 corresponds to .NET Framework 4.8
+      Result := True;
+  end;
+end;
+
+function InitializeSetup(): Boolean;
+var
+  ErrorCode: Integer;
+begin
+  Result := True;
+  if not IsDotNetDetector() then
+  begin
+    if MsgBox('Este programa requer o Microsoft .NET Framework 4.8.' + #13#10 +
+              'Deseja fazer o download do .NET Framework 4.8 agora?', mbConfirmation, MB_YESNO) = idYes then
+    begin
+      ShellExec('open', 'https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+    end;
+    Result := False;
+  end;
+end;
