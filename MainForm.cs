@@ -845,22 +845,12 @@ namespace MicMute
         {
             try
             {
-                bool isDark = IsSystemDarkTheme();
-                int useDark = isDark ? 1 : 0;
+                int useDark = 1;
                 DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
 
-                if (isDark)
-                {
-                    int colorVal = 0x202020;
-                    DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
-                    DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
-                }
-                else
-                {
-                    int defaultColor = -1;
-                    DwmSetWindowAttribute(this.Handle, 34, ref defaultColor, sizeof(int));
-                    DwmSetWindowAttribute(this.Handle, 35, ref defaultColor, sizeof(int));
-                }
+                int colorVal = 0x202020;
+                DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
+                DwmSetWindowAttribute(this.Handle, 35, ref colorVal, sizeof(int));
             }
             catch (Exception ex)
             {

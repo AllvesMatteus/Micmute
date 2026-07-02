@@ -595,7 +595,7 @@ namespace MicMute
             // 
             this.chkStartWithWindows.Checked = false;
             this.chkStartWithWindows.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.chkStartWithWindows.Location = new System.Drawing.Point(425, 12);
+            this.chkStartWithWindows.Location = new System.Drawing.Point(245, 12);
             this.chkStartWithWindows.Name = "chkStartWithWindows";
             this.chkStartWithWindows.Size = new System.Drawing.Size(50, 26);
             this.chkStartWithWindows.TabIndex = 1;
@@ -609,10 +609,10 @@ namespace MicMute
             this.btnAbout.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(40)))), ((int)(((byte)(40)))));
             this.btnAbout.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnAbout.ForeColor = System.Drawing.Color.White;
-            this.btnAbout.Location = new System.Drawing.Point(340, 9);
+            this.btnAbout.Location = new System.Drawing.Point(415, 9);
             this.btnAbout.Name = "btnAbout";
             this.btnAbout.Radius = 4;
-            this.btnAbout.Size = new System.Drawing.Size(70, 32);
+            this.btnAbout.Size = new System.Drawing.Size(60, 32);
             this.btnAbout.TabIndex = 2;
             this.btnAbout.Text = "Sobre";
             this.btnAbout.Click += new System.EventHandler(this.BtnAbout_Click);
@@ -629,7 +629,7 @@ namespace MicMute
             this.cbLanguage.Items.AddRange(new object[] {
             "PT-BR",
             "EN"});
-            this.cbLanguage.Location = new System.Drawing.Point(250, 12);
+            this.cbLanguage.Location = new System.Drawing.Point(325, 12);
             this.cbLanguage.Name = "cbLanguage";
             this.cbLanguage.Size = new System.Drawing.Size(80, 24);
             this.cbLanguage.TabIndex = 3;
