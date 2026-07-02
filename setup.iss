@@ -3,6 +3,7 @@ AppName=MicMute
 AppVersion=0.1.8.4-Beta
 DefaultDirName={autopf}\MicMute
 DisableDirPage=no
+AppendDefaultDirName=no
 DefaultGroupName=MicMute
 OutputBaseFilename=MicMute_Setup
 Compression=lzma
