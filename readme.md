@@ -12,7 +12,7 @@ Projetado com uma interface escura (Dark Theme) moderna no estilo Windows 11, o 
 
 ## 📸 Demonstração da Interface
 
-![Interface do MicMute](assets/icons/micon.png) *(Substitua pelo print do aplicativo em execução)*
+![Interface do MicMute](assets/icons/app.jpg)
 
 ---
 

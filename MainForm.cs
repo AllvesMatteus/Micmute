@@ -169,11 +169,23 @@ namespace MicMute
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
+            iconContextMenu.AutoSize = true;
             iconContextMenu.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
             foreach (ToolStripItem item in iconContextMenu.Items)
             {
                 item.Padding = new Padding(12, 8, 12, 8);
             }
+
+            // Apply modern native DWM rounded corners to context menu window on Windows 11
+            iconContextMenu.Opened += (s, ev) =>
+            {
+                try
+                {
+                    int cornerPreference = 3; // DWMWCP_ROUNDSMALL (Small rounded corners)
+                    DwmSetWindowAttribute(iconContextMenu.Handle, 33, ref cornerPreference, sizeof(int));
+                }
+                catch { }
+            };
 
             // Setup modern container wrappers for Hotkey inputs inside the right column panel
             this.hotkeyTextBox.Parent = null;

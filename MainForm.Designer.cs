@@ -114,7 +114,6 @@ namespace MicMute
             this.hotkeyToolStripMenuItem,
             this.toolStripMenuItem1});
             this.iconContextMenu.Name = "iconContextMenu";
-            this.iconContextMenu.Size = new System.Drawing.Size(220, 100);
             // 
             // toolStripMenuItem2
             // 
