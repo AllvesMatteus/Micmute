@@ -1,7 +1,7 @@
 [Setup]
 AppName=MicMute
 AppVersion=0.1.8.4-Beta
-DefaultDirName={autopf}\MicMute
+DefaultDirName={commonpf32}\MicMute
 DisableDirPage=no
 AppendDefaultDirName=no
 DefaultGroupName=MicMute
@@ -24,6 +24,10 @@ Name: "{app}\assets\configs"
 Name: "{app}\logs"
 Name: "{app}\temp"
 
+[InstallDelete]
+Type: files; Name: "{app}\assets\sounds\muted.wav"
+Type: files; Name: "{app}\assets\sounds\unmuted.wav"
+
 [Files]
 Source: "d:\Developer\sandbox\MicMute\bin\Release\MicMute.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "d:\Developer\sandbox\MicMute\bin\Release\MicMute.exe.config"; DestDir: "{app}"; Flags: ignoreversion
@@ -35,8 +39,6 @@ Source: "d:\Developer\sandbox\MicMute\assets\icons\micon.png"; DestDir: "{app}\a
 Source: "d:\Developer\sandbox\MicMute\assets\icons\micmute.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
 Source: "d:\Developer\sandbox\MicMute\assets\icons\github.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
 Source: "d:\Developer\sandbox\MicMute\assets\icons\linkedin.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\sounds\muted.wav"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\sounds\unmuted.wav"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion
 Source: "d:\Developer\sandbox\MicMute\assets\sounds\muted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "d:\Developer\sandbox\MicMute\assets\sounds\unmuted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
 

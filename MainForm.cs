@@ -192,7 +192,7 @@ namespace MicMute
             selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
             selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
 
-            playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 0) == 1;
+            playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 1) == 1;
             playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
 
             soundMutePath = (string)registryKey.GetValue(registrySoundMutePath);
