@@ -17,8 +17,11 @@ namespace MicMute
         {
             this.lang = lang;
             InitializeComponent();
-            
-            // Apply theme dynamically matching system personalization settings
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
             ApplyWindowTheme();
         }
 
@@ -46,8 +49,13 @@ namespace MicMute
         {
             try
             {
+                if (!this.IsHandleCreated) return;
+
                 int useDark = 1;
-                DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
+                if (DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int)) != 0)
+                {
+                    DwmSetWindowAttribute(this.Handle, 19, ref useDark, sizeof(int));
+                }
                 
                 int colorVal = 0x202020;
                 DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));

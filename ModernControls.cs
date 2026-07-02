@@ -446,6 +446,7 @@ namespace MicMute
     public class ModernTextBoxContainer : Panel
     {
         private Control innerControl;
+        private bool isFocused = false;
         
         public ModernTextBoxContainer(Control inner)
         {
@@ -465,6 +466,10 @@ namespace MicMute
             {
                 tb.BorderStyle = BorderStyle.None;
             }
+
+            // Track focus state for visual feedback
+            inner.GotFocus += (s, e) => { isFocused = true; Invalidate(); };
+            inner.LostFocus += (s, e) => { isFocused = false; Invalidate(); };
 
             SizeChanged += (s, e) =>
             {
@@ -486,12 +491,16 @@ namespace MicMute
                     g.FillPath(brush, path);
                 }
                 
-                using (Pen pen = new Pen(FluentTheme.CardBorder, 1))
+                // Draw full border: accent blue when focused, subtle gray otherwise
+                Color borderColor = isFocused ? FluentTheme.AccentColor : FluentTheme.CardBorder;
+                float borderWidth = isFocused ? 2f : 1f;
+                using (Pen pen = new Pen(borderColor, borderWidth))
                 {
                     g.DrawPath(pen, path);
                 }
 
-                using (Pen accentPen = new Pen(innerControl.Focused ? FluentTheme.AccentColor : FluentTheme.CardBorder, innerControl.Focused ? 2 : 1))
+                // Draw accent bottom line (thicker when focused)
+                using (Pen accentPen = new Pen(isFocused ? FluentTheme.AccentColor : FluentTheme.CardBorder, isFocused ? 2 : 1))
                 {
                     g.DrawLine(accentPen, 4, Height - 1, Width - 5, Height - 1);
                 }

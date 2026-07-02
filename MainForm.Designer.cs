@@ -588,7 +588,7 @@ namespace MicMute
             this.lblStartWithWindows.Name = "lblStartWithWindows";
             this.lblStartWithWindows.Size = new System.Drawing.Size(227, 15);
             this.lblStartWithWindows.TabIndex = 0;
-            this.lblStartWithWindows.Text = "Iniciar automaticamente com o Windows";
+            this.lblStartWithWindows.Text = "Iniciar com Windows";
             // 
             // 
             // chkStartWithWindows

@@ -14,7 +14,7 @@ namespace MicMute
 {
     public partial class MainForm : Form
     {
-        const string DEFAULT_RECORDING_DEVICE = "Dispositivo de gravação padrão";
+        private string DEFAULT_RECORDING_DEVICE = "Dispositivo de gravação padrão";
         public CoreAudioController AudioController = new CoreAudioController();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
         private readonly GlobalKeyboardHook globalHook = new GlobalKeyboardHook();
@@ -84,6 +84,12 @@ namespace MicMute
         public MainForm()
         {
             InitializeComponent();
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            ApplyWindowTheme();
         }
 
         private void OnNextDevice(DeviceChangedArgs next)
@@ -845,8 +851,14 @@ namespace MicMute
         {
             try
             {
+                if (!this.IsHandleCreated) return;
+
                 int useDark = 1;
-                DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int));
+                // Try attribute 20 (Windows 10 20H1+/Windows 11), fallback to 19 (older Windows 10)
+                if (DwmSetWindowAttribute(this.Handle, 20, ref useDark, sizeof(int)) != 0)
+                {
+                    DwmSetWindowAttribute(this.Handle, 19, ref useDark, sizeof(int));
+                }
 
                 int colorVal = 0x202020;
                 DwmSetWindowAttribute(this.Handle, 34, ref colorVal, sizeof(int));
@@ -862,7 +874,8 @@ namespace MicMute
         {
             if (lang == "EN")
             {
-                lblStartWithWindows.Text = "Start automatically with Windows";
+                DEFAULT_RECORDING_DEVICE = "Default recording device";
+                lblStartWithWindows.Text = "Start with Windows";
                 btnAbout.Text = "About";
                 lblFeedbackTitle.Text = "Sound Feedback";
                 lblPlayMuteText.Text = "Sound on mute";
@@ -879,7 +892,8 @@ namespace MicMute
             }
             else
             {
-                lblStartWithWindows.Text = "Iniciar automaticamente com o Windows";
+                DEFAULT_RECORDING_DEVICE = "Dispositivo de gravação padrão";
+                lblStartWithWindows.Text = "Iniciar com Windows";
                 btnAbout.Text = "Sobre";
                 lblFeedbackTitle.Text = "Feedback Sonoro";
                 lblPlayMuteText.Text = "Som ao mutar";
@@ -894,6 +908,9 @@ namespace MicMute
                 hotkeyToolStripMenuItem.Text = "Configurações";
                 toolStripMenuItem1.Text = "Fechar";
             }
+
+            // Refresh device dropdown with translated default device name
+            LoadMicsDropdown();
 
             var dev = getSelectedDevice();
             UpdateStatus(dev);
