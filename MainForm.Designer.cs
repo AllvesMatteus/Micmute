@@ -89,8 +89,7 @@ namespace MicMute
             // Volume controls
             this.lblVolumeIcon = new System.Windows.Forms.Label();
             this.lblVolumeValue = new System.Windows.Forms.Label();
-            this.btnVolDown = new MicMute.ModernButton();
-            this.btnVolUp = new MicMute.ModernButton();
+            this.trackBarVolume = new System.Windows.Forms.TrackBar();
             
             this.iconContextMenu.SuspendLayout();
             this.panelStatus.SuspendLayout();
@@ -225,12 +224,11 @@ namespace MicMute
             this.panelFeedback.Controls.Add(this.lblUnmuteFile);
             this.panelFeedback.Controls.Add(this.lblVolumeIcon);
             this.panelFeedback.Controls.Add(this.lblVolumeValue);
-            this.panelFeedback.Controls.Add(this.btnVolDown);
-            this.panelFeedback.Controls.Add(this.btnVolUp);
+            this.panelFeedback.Controls.Add(this.trackBarVolume);
             this.panelFeedback.Location = new System.Drawing.Point(15, 165);
             this.panelFeedback.Name = "panelFeedback";
             this.panelFeedback.Radius = 8;
-            this.panelFeedback.Size = new System.Drawing.Size(240, 185);
+            this.panelFeedback.Size = new System.Drawing.Size(240, 200);
             this.panelFeedback.TabIndex = 1;
             // 
             // lblFeedbackTitle
@@ -367,45 +365,29 @@ namespace MicMute
             this.lblVolumeValue.BackColor = System.Drawing.Color.Transparent;
             this.lblVolumeValue.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblVolumeValue.ForeColor = System.Drawing.Color.White;
-            this.lblVolumeValue.Location = new System.Drawing.Point(35, 151);
+            this.lblVolumeValue.Location = new System.Drawing.Point(35, 152);
             this.lblVolumeValue.Name = "lblVolumeValue";
             this.lblVolumeValue.Size = new System.Drawing.Size(35, 15);
             this.lblVolumeValue.TabIndex = 10;
             this.lblVolumeValue.Text = "100%";
-            // 
-            // btnVolDown
-            // 
-            this.btnVolDown.BackColor = System.Drawing.Color.Transparent;
-            this.btnVolDown.CustomBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(50)))), ((int)(((byte)(50)))), ((int)(((byte)(50)))));
-            this.btnVolDown.CustomBorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(68)))), ((int)(((byte)(68)))), ((int)(((byte)(68)))));
-            this.btnVolDown.CustomHoverColor = System.Drawing.Color.FromArgb(((int)(((byte)(62)))), ((int)(((byte)(62)))), ((int)(((byte)(62)))));
-            this.btnVolDown.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(40)))), ((int)(((byte)(40)))));
-            this.btnVolDown.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.btnVolDown.ForeColor = System.Drawing.Color.White;
-            this.btnVolDown.Location = new System.Drawing.Point(165, 148);
-            this.btnVolDown.Name = "btnVolDown";
-            this.btnVolDown.Radius = 3;
-            this.btnVolDown.Size = new System.Drawing.Size(25, 22);
-            this.btnVolDown.TabIndex = 11;
-            this.btnVolDown.Text = "-";
-            this.btnVolDown.Click += new System.EventHandler(this.BtnVolDown_Click);
-            // 
-            // btnVolUp
-            // 
-            this.btnVolUp.BackColor = System.Drawing.Color.Transparent;
-            this.btnVolUp.CustomBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(50)))), ((int)(((byte)(50)))), ((int)(((byte)(50)))));
-            this.btnVolUp.CustomBorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(68)))), ((int)(((byte)(68)))), ((int)(((byte)(68)))));
-            this.btnVolUp.CustomHoverColor = System.Drawing.Color.FromArgb(((int)(((byte)(62)))), ((int)(((byte)(62)))), ((int)(((byte)(62)))));
-            this.btnVolUp.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(40)))), ((int)(((byte)(40)))), ((int)(((byte)(40)))));
-            this.btnVolUp.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.btnVolUp.ForeColor = System.Drawing.Color.White;
-            this.btnVolUp.Location = new System.Drawing.Point(195, 148);
-            this.btnVolUp.Name = "btnVolUp";
-            this.btnVolUp.Radius = 3;
-            this.btnVolUp.Size = new System.Drawing.Size(25, 22);
-            this.btnVolUp.TabIndex = 12;
-            this.btnVolUp.Text = "+";
-            this.btnVolUp.Click += new System.EventHandler(this.BtnVolUp_Click);
+            //
+            // trackBarVolume
+            //
+            this.trackBarVolume.Minimum = 0;
+            this.trackBarVolume.Maximum = 100;
+            this.trackBarVolume.Value = 100;
+            this.trackBarVolume.TickFrequency = 10;
+            this.trackBarVolume.LargeChange = 10;
+            this.trackBarVolume.SmallChange = 1;
+            this.trackBarVolume.Orientation = System.Windows.Forms.Orientation.Horizontal;
+            // Oculta os ticks visuais para visual mais limpo no tema escuro
+            this.trackBarVolume.TickStyle = System.Windows.Forms.TickStyle.None;
+            this.trackBarVolume.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(45)))));
+            this.trackBarVolume.Location = new System.Drawing.Point(12, 168);
+            this.trackBarVolume.Name = "trackBarVolume";
+            this.trackBarVolume.Size = new System.Drawing.Size(216, 22);
+            this.trackBarVolume.TabIndex = 11;
+            this.trackBarVolume.Scroll += new System.EventHandler(this.TrackBarVolume_Scroll);
             this.lblUnmuteFile.AutoEllipsis = true;
             this.lblUnmuteFile.AutoSize = false;
             // 
@@ -571,7 +553,7 @@ namespace MicMute
             this.panelGeneral.Controls.Add(this.chkStartWithWindows);
             this.panelGeneral.Controls.Add(this.btnAbout);
             this.panelGeneral.Controls.Add(this.cbLanguage);
-            this.panelGeneral.Location = new System.Drawing.Point(15, 360);
+            this.panelGeneral.Location = new System.Drawing.Point(15, 380);
             this.panelGeneral.Name = "panelGeneral";
             this.panelGeneral.Radius = 8;
             this.panelGeneral.Size = new System.Drawing.Size(490, 50);
@@ -639,7 +621,7 @@ namespace MicMute
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(32)))), ((int)(((byte)(32)))), ((int)(((byte)(32)))));
-            this.ClientSize = new System.Drawing.Size(520, 425);
+            this.ClientSize = new System.Drawing.Size(520, 445);
             this.Controls.Add(this.panelGeneral);
             this.Controls.Add(this.panelHotkeys);
             this.Controls.Add(this.panelFeedback);
@@ -724,10 +706,9 @@ namespace MicMute
         private MicMute.ModernButton btnAbout;
         private MicMute.ModernComboBox cbLanguage;
         
-        // Volume and display elements
+        // Volume controls
         private System.Windows.Forms.Label lblVolumeIcon;
         private System.Windows.Forms.Label lblVolumeValue;
-        private MicMute.ModernButton btnVolDown;
-        private MicMute.ModernButton btnVolUp;
+        private System.Windows.Forms.TrackBar trackBarVolume;
     }
 }

@@ -8,6 +8,8 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Media;
 using System.Reactive;
+using System.Runtime.Serialization.Json;
+using System.Text;
 using System.Windows.Forms;
 
 namespace MicMute
@@ -20,6 +22,7 @@ namespace MicMute
         private readonly GlobalKeyboardHook globalHook = new GlobalKeyboardHook();
 
         private bool isExiting = false;
+        private bool isInitializing = true; // bloqueia saves prematuros durante o Load
         private Image imgOn = null;
         private Image imgOff = null;
         private Icon iconOn = null;
@@ -67,9 +70,18 @@ namespace MicMute
             set { myVisible = value; Visible = value; }
         }
 
-        // P/Invoke for Immersive Dark Mode and Icon Disposal
+        // P/Invoke — DWM: atributos de janela
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int attrLen);
+
+        // DWMWA_WINDOW_CORNER_PREFERENCE (atributo 33, Windows 11+)
+        private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+
+        // Valores de DWM_WINDOW_CORNER_PREFERENCE
+        private const int DWMWCP_DEFAULT    = 0; // SO decide
+        private const int DWMWCP_DONOTROUND = 1; // Sem arredondamento
+        private const int DWMWCP_ROUND      = 2; // Arredondado (raio maior, padrão Win11)
+        private const int DWMWCP_ROUNDSMALL = 3; // Arredondado pequeno
 
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
         private static extern bool DestroyIcon(IntPtr handle);
@@ -165,32 +177,44 @@ namespace MicMute
             // Apply DWM window attributes dynamically based on light/dark system theme
             ApplyWindowTheme();
 
-            // Apply custom professional dark context menu renderer & remove margins
+            // ── Menu de contexto da bandeja ─────────────────────────────────────────
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
-            iconContextMenu.Padding = new Padding(0, 2, 0, 2);
+            // Padding vertical do strip: 4px topo/base para não ficar "gordo"
+            iconContextMenu.Padding = new Padding(0, 4, 0, 4);
             iconContextMenu.AutoSize = true;
-            iconContextMenu.Font = new Font("Segoe UI", 12F, FontStyle.Regular);
+            iconContextMenu.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
             foreach (ToolStripItem item in iconContextMenu.Items)
             {
-                item.Padding = new Padding(12, 8, 12, 8);
-                item.Margin = new Padding(0);
+                // Horizontal: 16px para texto não encostar na borda.
+                // Vertical: 5px — suficiente para clique confortável sem "gordura" extra.
+                item.Padding = new Padding(16, 5, 16, 5);
+                item.Margin  = new Padding(0);
             }
 
-            // Apply modern native DWM rounded corners to context menu window on Windows 11 and force region-based rounding
+            // Arredondamento do menu ao abrir
             iconContextMenu.Opened += (s, ev) =>
             {
+                // ── Nativo Windows 11: DWM arredonda a janela do próprio OS ──────────
+                // DWMWCP_ROUND dá raio ~8px — visual consistente com menus do Shell.
+                // Em Windows 10 essa chamada é ignorada silenciosamente.
                 try
                 {
-                    int cornerPreference = 3; // DWMWCP_ROUNDSMALL (Small rounded corners)
-                    DwmSetWindowAttribute(iconContextMenu.Handle, 33, ref cornerPreference, sizeof(int));
+                    int pref = DWMWCP_ROUND;
+                    DwmSetWindowAttribute(iconContextMenu.Handle, DWMWA_WINDOW_CORNER_PREFERENCE,
+                        ref pref, sizeof(int));
                 }
                 catch { }
 
+                // ── Fallback Region para Windows 10 (e para clip do fundo desenhado) ─
+                // Aplicamos DEPOIS do DWM para que no Win11 o clip do GDI+ fique
+                // alinhado ao arredondamento nativo (raio 8). No Win10 é o único
+                // mecanismo de arredondamento disponível.
                 try
                 {
-                    Rectangle rect = new Rectangle(0, 0, iconContextMenu.Width, iconContextMenu.Height);
+                    // Usa as dimensões reais após AutoSize calcular o layout
+                    var rect = new Rectangle(0, 0, iconContextMenu.Width, iconContextMenu.Height);
                     iconContextMenu.Region = new Region(FluentTheme.GetRoundedPath(rect, 8));
                 }
                 catch { }
@@ -223,43 +247,71 @@ namespace MicMute
                 if (unmuteTextBox.Text != translated) unmuteTextBox.Text = translated;
             };
 
-            // Load registry values
-            selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
-            selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
+            // Salva configurações ao perder o foco de qualquer caixa de hotkey
+            hotkeyTextBox.Leave += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
+            muteTextBox.Leave   += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
+            unmuteTextBox.Leave += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
 
-            playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 1) == 1;
-            playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
+            // Detecta se é a primeira execução (sem JSON e sem chaves no registry)
+            bool isFirstRun = !File.Exists(SettingsManager.SettingsFilePath) && (registryKey.ValueCount == 0);
 
-            soundMutePath = (string)registryKey.GetValue(registrySoundMutePath);
-            if (string.IsNullOrEmpty(soundMutePath) || !File.Exists(ResolveSoundPath(soundMutePath)) || soundMutePath == @"assets\sounds\muted.wav")
+            if (isFirstRun)
             {
-                string mp3Path = @"assets\sounds\muted.mp3";
-                if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
-                {
-                    soundMutePath = mp3Path;
-                }
-                else
-                {
-                    soundMutePath = @"assets\sounds\muted.wav";
-                }
+                selectedDeviceId = "";
+                selectedDeviceName = DEFAULT_RECORDING_DEVICE;
+                playSoundOnMute = true;
+                playSoundOnUnmute = true;
+
+                string muteMp3 = @"assets\sounds\muted.mp3";
+                soundMutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, muteMp3)) ? muteMp3 : @"assets\sounds\muted.wav";
+
+                string unmuteMp3 = @"assets\sounds\unmuted.mp3";
+                soundUnmutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, unmuteMp3)) ? unmuteMp3 : @"assets\sounds\unmuted.wav";
+
+                soundVolume = 100;
+                currentLang = "PT";
             }
-            soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath);
-            if (string.IsNullOrEmpty(soundUnmutePath) || !File.Exists(ResolveSoundPath(soundUnmutePath)) || soundUnmutePath == @"assets\sounds\unmuted.wav")
+            else
             {
-                string mp3Path = @"assets\sounds\unmuted.mp3";
-                if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
+                selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
+
+                playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 1) == 1;
+                playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
+
+                soundMutePath = (string)registryKey.GetValue(registrySoundMutePath);
+                if (string.IsNullOrEmpty(soundMutePath) || !File.Exists(ResolveSoundPath(soundMutePath)) || soundMutePath == @"assets\sounds\muted.wav")
                 {
-                    soundUnmutePath = mp3Path;
+                    string mp3Path = @"assets\sounds\muted.mp3";
+                    if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                    {
+                        soundMutePath = mp3Path;
+                    }
+                    else
+                    {
+                        soundMutePath = @"assets\sounds\muted.wav";
+                    }
                 }
-                else
+
+                soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath);
+                if (string.IsNullOrEmpty(soundUnmutePath) || !File.Exists(ResolveSoundPath(soundUnmutePath)) || soundUnmutePath == @"assets\sounds\unmuted.wav")
                 {
-                    soundUnmutePath = @"assets\sounds\unmuted.wav";
+                    string mp3Path = @"assets\sounds\unmuted.mp3";
+                    if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                    {
+                        soundUnmutePath = mp3Path;
+                    }
+                    else
+                    {
+                        soundUnmutePath = @"assets\sounds\unmuted.wav";
+                    }
                 }
+
+                soundVolume = registryKey.GetValue("SoundVolume") != null ? Convert.ToInt32(registryKey.GetValue("SoundVolume")) : 100;
+                currentLang = (string)registryKey.GetValue("Language") ?? "PT";
             }
 
-            soundVolume = registryKey.GetValue("SoundVolume") != null ? Convert.ToInt32(registryKey.GetValue("SoundVolume")) : 100;
-            currentLang = (string)registryKey.GetValue("Language") ?? "PT";
-
+            trackBarVolume.Value = soundVolume;
             lblVolumeValue.Text = soundVolume + "%";
             cbLanguage.SelectedIndex = (currentLang == "EN") ? 1 : 0;
 
@@ -272,9 +324,9 @@ namespace MicMute
             lblMuteFile.Text = string.IsNullOrEmpty(soundMutePath) ? (currentLang == "EN" ? "No sound" : "Nenhum som") : Path.GetFileName(soundMutePath);
             lblUnmuteFile.Text = string.IsNullOrEmpty(soundUnmutePath) ? (currentLang == "EN" ? "No sound" : "Nenhum som") : Path.GetFileName(soundUnmutePath);
 
-            // Wire custom ToggleSwitch events
-            chkPlayMute.CheckedChanged += (s, ev) => playSoundOnMute = chkPlayMute.Checked;
-            chkPlayUnmute.CheckedChanged += (s, ev) => playSoundOnUnmute = chkPlayUnmute.Checked;
+            // Wire custom ToggleSwitch events — atualiza variável e salva imediatamente
+            chkPlayMute.CheckedChanged += (s, ev) => { if (isInitializing) return; playSoundOnMute = chkPlayMute.Checked; SaveSettingsToFile(); };
+            chkPlayUnmute.CheckedChanged += (s, ev) => { if (isInitializing) return; playSoundOnUnmute = chkPlayUnmute.Checked; SaveSettingsToFile(); };
 
             // Load custom state icons
             string iconOnPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micon.ico");
@@ -304,7 +356,7 @@ namespace MicMute
 
             // Load auto-start state
             LoadStartupSettings();
-            chkStartWithWindows.CheckedChanged += (s, ev) => SaveStartupSettings();
+            chkStartWithWindows.CheckedChanged += (s, ev) => { if (isInitializing) return; SaveStartupSettings(); SaveSettingsToFile(); };
 
             LoadMicsDropdown();
             UpdateSelectedDevice();
@@ -338,6 +390,21 @@ namespace MicMute
             }
 
             ApplyLanguage(currentLang);
+
+            // Carrega configurações do arquivo JSON (sobrepõe Registry se arquivo existir)
+            var savedSettings = LoadSettingsFromFile();
+            if (savedSettings != null)
+            {
+                ApplySettingsToUI(savedSettings);
+            }
+
+            // A partir daqui os eventos de UI podem disparar saves normalmente
+            isInitializing = false;
+
+            if (isFirstRun && savedSettings == null)
+            {
+                SaveSettingsToFile(); // persiste os padrões na primeira execução
+            }
         }
 
         private void GlobalHook_KeyDown(object sender, KeyEventArgs e)
@@ -460,7 +527,20 @@ namespace MicMute
                 using (RegistryKey key = Registry.CurrentUser.OpenSubKey(runKey, false))
                 {
                     if (key != null)
-                        chkStartWithWindows.Checked = key.GetValue("MicMute") != null;
+                    {
+                        string savedPath = key.GetValue("MicMute") as string;
+                        // Valida se o executável registrado ainda existe no disco
+                        bool isValid = !string.IsNullOrEmpty(savedPath) &&
+                                       File.Exists(savedPath.Trim('"'));
+                        chkStartWithWindows.Checked = isValid;
+
+                        // Remove entrada inválida para não confundir o usuário
+                        if (!isValid && savedPath != null)
+                        {
+                            using (RegistryKey writable = Registry.CurrentUser.OpenSubKey(runKey, true))
+                                writable?.DeleteValue("MicMute", false);
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -701,62 +781,193 @@ namespace MicMute
             MyShow();
         }
 
-        private void SaveSettings()
+        // ─── Persistência JSON ────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Captura o estado atual de todos os controles de configuração e retorna
+        /// um objeto MicMuteSettings pronto para ser serializado.
+        /// </summary>
+        private MicMuteSettings CaptureSettingsFromUI()
         {
+            // Sincroniza campos internos antes de capturar
+            hotkey      = hotkeyTextBox.Hotkey;
+            muteHotkey  = muteTextBox.Hotkey;
+            unMuteHotkey = unmuteTextBox.Hotkey;
+            playSoundOnMute   = chkPlayMute.Checked;
+            playSoundOnUnmute = chkPlayUnmute.Checked;
+            soundMutePath   = txtMutePath.Text;
+            soundUnmutePath = txtUnmutePath.Text;
+            soundVolume     = trackBarVolume.Value;
+
+            return new MicMuteSettings
+            {
+                DeviceId        = selectedDeviceId ?? "",
+                DeviceName      = selectedDeviceName ?? "",
+                Hotkey          = hotkey?.ToString(),
+                HotkeyMute      = muteHotkey?.ToString(),
+                HotkeyUnmute    = unMuteHotkey?.ToString(),
+                PlayMute        = playSoundOnMute,
+                PlayUnmute      = playSoundOnUnmute,
+                SoundMutePath   = soundMutePath ?? "",
+                SoundUnmutePath = soundUnmutePath ?? "",
+                SoundVolume     = soundVolume,
+                Language        = currentLang ?? "PT",
+                StartWithWindows = chkStartWithWindows.Checked
+            };
+        }
+
+        /// <summary>
+        /// Aplica um objeto MicMuteSettings nos controles da UI e nas variáveis internas.
+        /// Chamado no Load, após ler o arquivo JSON (para sobrepor o Registry).
+        /// </summary>
+        private void ApplySettingsToUI(MicMuteSettings s)
+        {
+            if (s == null) return;
             try
             {
-                // Save Toggle Hotkey
-                hotkey = hotkeyTextBox.Hotkey;
-                if (hotkey == null)
+                // Dispositivo
+                if (s.DeviceId != null) selectedDeviceId = s.DeviceId;
+                if (s.DeviceName != null) selectedDeviceName = s.DeviceName;
+
+                // Hotkeys
+                var converter = new Shortcut.Forms.HotkeyConverter();
+                if (!string.IsNullOrEmpty(s.Hotkey))
                 {
-                    registryKey.DeleteValue(registryKeyName, false);
+                    hotkey = (Hotkey)converter.ConvertFromString(s.Hotkey);
+                    hotkeyTextBox.Hotkey = hotkey;
                 }
-                else
+                if (!string.IsNullOrEmpty(s.HotkeyMute))
                 {
-                    registryKey.SetValue(registryKeyName, hotkey.ToString());
+                    muteHotkey = (Hotkey)converter.ConvertFromString(s.HotkeyMute);
+                    muteTextBox.Hotkey = muteHotkey;
+                }
+                if (!string.IsNullOrEmpty(s.HotkeyUnmute))
+                {
+                    unMuteHotkey = (Hotkey)converter.ConvertFromString(s.HotkeyUnmute);
+                    unmuteTextBox.Hotkey = unMuteHotkey;
                 }
 
-                // Save Mute Hotkey
-                muteHotkey = muteTextBox.Hotkey;
-                if (muteHotkey == null)
+                // Feedback sonoro
+                playSoundOnMute   = s.PlayMute;
+                playSoundOnUnmute = s.PlayUnmute;
+                soundMutePath   = s.SoundMutePath ?? "";
+                soundUnmutePath = s.SoundUnmutePath ?? "";
+
+                chkPlayMute.Checked   = playSoundOnMute;
+                chkPlayUnmute.Checked = playSoundOnUnmute;
+                txtMutePath.Text   = soundMutePath;
+                txtUnmutePath.Text = soundUnmutePath;
+
+                lblMuteFile.Text   = string.IsNullOrEmpty(soundMutePath)
+                    ? (currentLang == "EN" ? "No sound" : "Nenhum som")
+                    : Path.GetFileName(soundMutePath);
+                lblUnmuteFile.Text = string.IsNullOrEmpty(soundUnmutePath)
+                    ? (currentLang == "EN" ? "No sound" : "Nenhum som")
+                    : Path.GetFileName(soundUnmutePath);
+
+                // Volume
+                soundVolume = s.SoundVolume;
+                trackBarVolume.Value = soundVolume;
+                lblVolumeValue.Text = soundVolume + "%";
+
+                // Idioma (só altera o índice do combo; ApplyLanguage já foi chamada no Load;
+                // aqui apenas sincronizamos a variável e o combo sem disparar o evento)
+                if (!string.IsNullOrEmpty(s.Language) && s.Language != currentLang)
                 {
-                    registryKey.DeleteValue(registryKeyMute, false);
-                }
-                else
-                {
-                    registryKey.SetValue(registryKeyMute, muteHotkey.ToString());
+                    currentLang = s.Language;
+                    int langIdx = (currentLang == "EN") ? 1 : 0;
+                    if (cbLanguage.SelectedIndex != langIdx)
+                    {
+                        cbLanguage.SelectedIndexChanged -= CbLanguage_SelectedIndexChanged;
+                        cbLanguage.SelectedIndex = langIdx;
+                        cbLanguage.SelectedIndexChanged += CbLanguage_SelectedIndexChanged;
+                    }
+                    ApplyLanguage(currentLang);
                 }
 
-                // Save Unmute Hotkey
-                unMuteHotkey = unmuteTextBox.Hotkey;
-                if (unMuteHotkey == null)
-                {
-                    registryKey.DeleteValue(registryKeyUnmute, false);
-                }
-                else
-                {
-                    registryKey.SetValue(registryKeyUnmute, unMuteHotkey.ToString());
-                }
+                // Iniciar com Windows — isInitializing=true garante que o evento não dispara saves durante Apply
+                bool startWithWin = s.StartWithWindows;
+                // Lê a realidade do Registry para decidir se precisa mudar
+                string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+                bool currentlyInRun = false;
+                using (var rk = Registry.CurrentUser.OpenSubKey(runKey, false))
+                    currentlyInRun = rk?.GetValue("MicMute") != null;
 
-                // Save audio feedback settings
-                playSoundOnMute = chkPlayMute.Checked;
-                playSoundOnUnmute = chkPlayUnmute.Checked;
-                soundMutePath = txtMutePath.Text;
-                soundUnmutePath = txtUnmutePath.Text;
+                // Aplica apenas se diferente para não disparar saves desnecessários
+                if (chkStartWithWindows.Checked != startWithWin)
+                    chkStartWithWindows.Checked = startWithWin;
 
-                registryKey.SetValue(registryPlayMute, playSoundOnMute ? 1 : 0);
-                registryKey.SetValue(registryPlayUnmute, playSoundOnUnmute ? 1 : 0);
-                registryKey.SetValue(registrySoundMutePath, soundMutePath);
-                registryKey.SetValue(registrySoundUnmutePath, soundUnmutePath);
-                registryKey.SetValue("SoundVolume", soundVolume, RegistryValueKind.DWord);
-                registryKey.SetValue("Language", currentLang, RegistryValueKind.String);
-
-                SaveStartupSettings();
+                // Reload do dropdown para refletir o dispositivo salvo
+                LoadMicsDropdown();
+                UpdateSelectedDevice();
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error saving settings: " + ex.Message);
+                Console.WriteLine("[ApplySettingsToUI] Erro: " + ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Carrega as configurações do arquivo JSON via SettingsManager.
+        /// Retorna null se o arquivo não existir ou falhar.
+        /// </summary>
+        private MicMuteSettings LoadSettingsFromFile()
+        {
+            return SettingsManager.Load();
+        }
+
+        /// <summary>
+        /// Captura a UI, salva no arquivo JSON e sincroniza as chaves relevantes no Registry.
+        /// Este é o único ponto de escrita; substitui a lógica dispersa anterior.
+        /// </summary>
+        private void SaveSettingsToFile()
+        {
+            try
+            {
+                MicMuteSettings s = CaptureSettingsFromUI();
+
+                // 1) Grava o arquivo JSON
+                SettingsManager.Save(s);
+
+                // 2) Mantém o Registry sincronizado (compatibilidade com código externo)
+                if (s.Hotkey != null)
+                    registryKey.SetValue(registryKeyName, s.Hotkey);
+                else
+                    registryKey.DeleteValue(registryKeyName, false);
+
+                if (s.HotkeyMute != null)
+                    registryKey.SetValue(registryKeyMute, s.HotkeyMute);
+                else
+                    registryKey.DeleteValue(registryKeyMute, false);
+
+                if (s.HotkeyUnmute != null)
+                    registryKey.SetValue(registryKeyUnmute, s.HotkeyUnmute);
+                else
+                    registryKey.DeleteValue(registryKeyUnmute, false);
+
+                registryKey.SetValue(registryDeviceId,         s.DeviceId);
+                registryKey.SetValue(registryDeviceName,       s.DeviceName);
+                registryKey.SetValue(registryPlayMute,         s.PlayMute ? 1 : 0);
+                registryKey.SetValue(registryPlayUnmute,       s.PlayUnmute ? 1 : 0);
+                registryKey.SetValue(registrySoundMutePath,    s.SoundMutePath);
+                registryKey.SetValue(registrySoundUnmutePath,  s.SoundUnmutePath);
+                registryKey.SetValue("SoundVolume",            s.SoundVolume, RegistryValueKind.DWord);
+                registryKey.SetValue("Language",               s.Language,    RegistryValueKind.String);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[SaveSettingsToFile] Erro: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Salva todas as configurações (JSON + Registry). Mantido para compatibilidade
+        /// com chamadas existentes (FormClosing, BtnVolDown/Up, CbLanguage).
+        /// </summary>
+        private void SaveSettings()
+        {
+            SaveSettingsToFile();
+            SaveStartupSettings();
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -818,11 +1029,10 @@ namespace MicMute
             ComboboxItem selectedItem = (ComboboxItem)cbMics.SelectedItem;
             if (selectedItem != null)
             {
-                registryKey.SetValue(registryDeviceId, selectedItem.deviceId);
-                registryKey.SetValue(registryDeviceName, selectedItem.Text);
                 selectedDeviceName = selectedItem.Text;
-                selectedDeviceId = selectedItem.deviceId;
+                selectedDeviceId   = selectedItem.deviceId;
                 UpdateSelectedDevice();
+                SaveSettingsToFile(); // persiste imediatamente
             }
         }
 
@@ -846,8 +1056,9 @@ namespace MicMute
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     txtMutePath.Text = openFileDialog.FileName;
-                    soundMutePath = openFileDialog.FileName;
+                    soundMutePath    = openFileDialog.FileName;
                     lblMuteFile.Text = Path.GetFileName(openFileDialog.FileName);
+                    SaveSettingsToFile(); // persiste imediatamente
                 }
             }
         }
@@ -867,8 +1078,9 @@ namespace MicMute
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     txtUnmutePath.Text = openFileDialog.FileName;
-                    soundUnmutePath = openFileDialog.FileName;
+                    soundUnmutePath    = openFileDialog.FileName;
                     lblUnmuteFile.Text = Path.GetFileName(openFileDialog.FileName);
+                    SaveSettingsToFile(); // persiste imediatamente
                 }
             }
         }
@@ -982,18 +1194,11 @@ namespace MicMute
             SaveSettings();
         }
 
-        private void BtnVolDown_Click(object sender, EventArgs e)
+        private void TrackBarVolume_Scroll(object sender, EventArgs e)
         {
-            soundVolume = Math.Max(0, soundVolume - 10);
+            soundVolume = trackBarVolume.Value;
             lblVolumeValue.Text = soundVolume + "%";
-            SaveSettings();
-        }
-
-        private void BtnVolUp_Click(object sender, EventArgs e)
-        {
-            soundVolume = Math.Min(100, soundVolume + 10);
-            lblVolumeValue.Text = soundVolume + "%";
-            SaveSettings();
+            SaveSettingsToFile(); // Salva a alteração imediatamente
         }
 
         private string TranslateHotkeyText(string text, string lang)
@@ -1076,60 +1281,95 @@ namespace MicMute
 
     public class FluentMenuRenderer : ToolStripProfessionalRenderer
     {
+        // Raio dos cantos — deve ser idêntico ao usado na Region e na borda
+        private const int MenuRadius   = 8;
+        // Raio do highlight por item — menor que o do menu
+        private const int ItemRadius   = 4;
+        // Cor de fundo do menu
+        private static readonly Color BgColor       = Color.FromArgb(45, 45, 45);
+        // Cor de highlight ao passar o mouse
+        private static readonly Color HoverColor     = Color.FromArgb(68, 68, 78);
+
         public FluentMenuRenderer() : base(new FluentColorTable()) { }
 
+        // ── Fundo geral do strip ─────────────────────────────────────────────────
+        // Usa FillPath em vez de FillRectangle para que o preenchimento
+        // respeite a Region arredondada, evitando pixels "quadrados" nos cantos.
         protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
         {
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(45, 45, 45)))
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            Rectangle rect = new Rectangle(0, 0, e.ToolStrip.Width, e.ToolStrip.Height);
+            using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, MenuRadius))
+            using (SolidBrush brush = new SolidBrush(BgColor))
             {
-                e.Graphics.FillRectangle(brush, e.AffectedBounds);
+                e.Graphics.FillPath(brush, path);
             }
         }
 
+        // ── Highlight do item selecionado ────────────────────────────────────────
+        // Inset horizontal fixo (4px) + inset vertical proporcional (2px),
+        // garantindo que o pill não toque nas bordas do menu.
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
-            if (e.Item.Selected)
+            if (!e.Item.Selected) return;
+
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // inset: 4px laterais, 2px topo/base — visual "pill" compacto
+            const int hInset = 4;
+            const int vInset = 2;
+            Rectangle rect = new Rectangle(
+                hInset,
+                vInset,
+                e.Item.Width  - hInset * 2,
+                e.Item.Height - vInset * 2);
+
+            using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, ItemRadius))
+            using (SolidBrush brush = new SolidBrush(HoverColor))
             {
-                Rectangle rect = new Rectangle(4, 2, e.Item.Width - 8, e.Item.Height - 4);
-                using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, 4))
-                using (SolidBrush brush = new SolidBrush(Color.FromArgb(70, 70, 70)))
-                {
-                    e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-                    e.Graphics.FillPath(brush, path);
-                }
+                e.Graphics.FillPath(brush, path);
             }
         }
 
+        // ── Texto dos itens ──────────────────────────────────────────────────────
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             e.TextColor = FluentTheme.TextPrimary;
             base.OnRenderItemText(e);
         }
 
+        // ── Margem de imagem (desativada, mas precisa ser pintada para não vazar) ─
         protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
         {
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(45, 45, 45)))
-            {
+            // ShowImageMargin = false, mas o renderer ainda chama este método;
+            // pintar com a mesma cor de fundo evita artefatos.
+            using (SolidBrush brush = new SolidBrush(BgColor))
                 e.Graphics.FillRectangle(brush, e.AffectedBounds);
-            }
         }
 
+        // ── Borda externa do menu ────────────────────────────────────────────────
+        // Raio idêntico ao da Region (8px) para que a borda desenhada pelo GDI+
+        // fique alinhada ao clip, sem "borda quadrada" visível além do arredondamento.
         protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
         {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            // Recuo de 0.5px para a borda cair dentro do clip da Region
             Rectangle rect = new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
-            using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, 8))
-            using (Pen pen = new Pen(FluentTheme.CardBorder, 1))
+            using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, MenuRadius))
+            using (Pen pen = new Pen(FluentTheme.CardBorder, 1f))
             {
-                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 e.Graphics.DrawPath(pen, path);
             }
         }
 
+        // ── Separador ────────────────────────────────────────────────────────────
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {
-            using (Pen pen = new Pen(FluentTheme.CardBorder, 1))
+            int midY = e.Item.Height / 2;
+            using (Pen pen = new Pen(FluentTheme.CardBorder, 1f))
             {
-                e.Graphics.DrawLine(pen, 10, e.Item.Height / 2, e.ToolStrip.Width - 10, e.Item.Height / 2);
+                // Recuo horizontal de 8px para o separador não tocar as bordas arredondadas
+                e.Graphics.DrawLine(pen, 8, midY, e.ToolStrip.Width - 8, midY);
             }
         }
     }
