@@ -22,7 +22,7 @@ namespace MicMute
         private readonly GlobalKeyboardHook globalHook = new GlobalKeyboardHook();
 
         private bool isExiting = false;
-        private bool isInitializing = true; // bloqueia saves prematuros durante o Load
+        private bool isInitializing = true; // blocks premature saves during Load
         private Image imgOn = null;
         private Image imgOff = null;
         private Icon iconOn = null;
@@ -70,18 +70,18 @@ namespace MicMute
             set { myVisible = value; Visible = value; }
         }
 
-        // P/Invoke — DWM: atributos de janela
+        // P/Invoke — DWM: window attributes
         [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int attrLen);
 
-        // DWMWA_WINDOW_CORNER_PREFERENCE (atributo 33, Windows 11+)
+        // DWMWA_WINDOW_CORNER_PREFERENCE (attribute 33, Windows 11+)
         private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
 
-        // Valores de DWM_WINDOW_CORNER_PREFERENCE
-        private const int DWMWCP_DEFAULT    = 0; // SO decide
-        private const int DWMWCP_DONOTROUND = 1; // Sem arredondamento
-        private const int DWMWCP_ROUND      = 2; // Arredondado (raio maior, padrão Win11)
-        private const int DWMWCP_ROUNDSMALL = 3; // Arredondado pequeno
+        // DWM_WINDOW_CORNER_PREFERENCE values
+        private const int DWMWCP_DEFAULT    = 0; // OS decides
+        private const int DWMWCP_DONOTROUND = 1; // No rounding
+        private const int DWMWCP_ROUND      = 2; // Rounded (larger radius, Win11 default)
+        private const int DWMWCP_ROUNDSMALL = 3; // Small rounded
 
         [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto)]
         private static extern bool DestroyIcon(IntPtr handle);
@@ -177,28 +177,28 @@ namespace MicMute
             // Apply DWM window attributes dynamically based on light/dark system theme
             ApplyWindowTheme();
 
-            // ── Menu de contexto da bandeja ─────────────────────────────────────────
+            // ── Tray context menu ─────────────────────────────────────────
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
-            // Padding vertical do strip: 4px topo/base para não ficar "gordo"
+            // Vertical padding of the strip: 4px top/bottom to avoid looking thick
             iconContextMenu.Padding = new Padding(0, 4, 0, 4);
             iconContextMenu.AutoSize = true;
             iconContextMenu.Font = new Font("Segoe UI", 10F, FontStyle.Regular);
             foreach (ToolStripItem item in iconContextMenu.Items)
             {
-                // Horizontal: 16px para texto não encostar na borda.
-                // Vertical: 5px — suficiente para clique confortável sem "gordura" extra.
+                // Horizontal: 16px so text doesn't touch the border.
+                // Vertical: 5px — enough for comfortable click without extra thickness.
                 item.Padding = new Padding(16, 5, 16, 5);
                 item.Margin  = new Padding(0);
             }
 
-            // Arredondamento do menu ao abrir
+            // Rounding of the menu on open
             iconContextMenu.Opened += (s, ev) =>
             {
-                // ── Nativo Windows 11: DWM arredonda a janela do próprio OS ──────────
-                // DWMWCP_ROUND dá raio ~8px — visual consistente com menus do Shell.
-                // Em Windows 10 essa chamada é ignorada silenciosamente.
+                // ── Native Windows 11: DWM rounds the window of the OS itself ──────────
+                // DWMWCP_ROUND gives radius ~8px — visual consistent with Shell menus.
+                // In Windows 10 this call is ignored silently.
                 try
                 {
                     int pref = DWMWCP_ROUND;
@@ -207,13 +207,13 @@ namespace MicMute
                 }
                 catch { }
 
-                // ── Fallback Region para Windows 10 (e para clip do fundo desenhado) ─
-                // Aplicamos DEPOIS do DWM para que no Win11 o clip do GDI+ fique
-                // alinhado ao arredondamento nativo (raio 8). No Win10 é o único
-                // mecanismo de arredondamento disponível.
+                // ── Fallback Region for Windows 10 (and for drawn background clip) ─
+                // We apply AFTER DWM so that in Win11 the GDI+ clip is
+                // aligned to native rounding (radius 8). In Win10 it is the only
+                // rounding mechanism available.
                 try
                 {
-                    // Usa as dimensões reais após AutoSize calcular o layout
+                    // Uses real dimensions after AutoSize calculates layout
                     var rect = new Rectangle(0, 0, iconContextMenu.Width, iconContextMenu.Height);
                     iconContextMenu.Region = new Region(FluentTheme.GetRoundedPath(rect, 8));
                 }
@@ -247,7 +247,7 @@ namespace MicMute
                 if (unmuteTextBox.Text != translated) unmuteTextBox.Text = translated;
             };
 
-            // Salva configurações ao perder o foco de qualquer caixa de hotkey
+            // Saves settings when losing focus on any hotkey textbox
             hotkeyTextBox.Leave += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
             muteTextBox.Leave   += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
             unmuteTextBox.Leave += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
@@ -262,7 +262,7 @@ namespace MicMute
 
                 if (registryKey.ValueCount > 0)
                 {
-                    // Migra do Registry para o JSON uma única vez
+                    // Migrates from Registry to JSON one single time
                     savedSettings.DeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
                     savedSettings.DeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
                     savedSettings.PlayMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 1) == 1;
@@ -314,7 +314,7 @@ namespace MicMute
                 }
                 else
                 {
-                    // Primeira execução de verdade: aplica defaults
+                    // True first run: apply defaults
                     savedSettings.DeviceId = "";
                     savedSettings.DeviceName = DEFAULT_RECORDING_DEVICE;
                     savedSettings.PlayMute = true;
@@ -337,11 +337,11 @@ namespace MicMute
                     savedSettings.HotkeyUnmute = null;
                 }
 
-                // Grava as configurações no arquivo JSON
+                // Writes settings to the JSON file
                 SettingsManager.Save(savedSettings);
             }
 
-            // Wire custom ToggleSwitch events — atualiza variável e salva imediatamente
+            // Wire custom ToggleSwitch events — updates variable and saves immediately
             chkPlayMute.CheckedChanged += (s, ev) => { if (isInitializing) return; playSoundOnMute = chkPlayMute.Checked; SaveSettingsToFile(); };
             chkPlayUnmute.CheckedChanged += (s, ev) => { if (isInitializing) return; playSoundOnUnmute = chkPlayUnmute.Checked; SaveSettingsToFile(); };
 
@@ -384,13 +384,13 @@ namespace MicMute
             globalHook.KeyDown += GlobalHook_KeyDown;
             globalHook.Hook();
 
-            // Aplica as configurações salvas na UI e variáveis internas
+            // Applies saved settings to the UI and internal variables
             ApplySettingsToUI(savedSettings);
 
-            // A partir daqui os eventos de UI podem disparar saves normalmente
+            // From here on, UI events can trigger saves normally
             isInitializing = false;
 
-            // Garante que o Registry e o JSON estão sincronizados na primeira execução ou se o Registry foi limpo
+            // Ensures Registry and JSON are synchronized on first run or if Registry was cleared
             if (isFirstRun || registryKey.ValueCount == 0)
             {
                 SaveSettings();
@@ -519,12 +519,12 @@ namespace MicMute
                     if (key != null)
                     {
                         string savedPath = key.GetValue("MicMute") as string;
-                        // Valida se o executável registrado ainda existe no disco
+                        // Validates if the registered executable still exists on disk
                         bool isValid = !string.IsNullOrEmpty(savedPath) &&
                                        File.Exists(savedPath.Trim('"'));
                         chkStartWithWindows.Checked = isValid;
 
-                        // Remove entrada inválida para não confundir o usuário
+                        // Removes invalid entry to not confuse the user
                         if (!isValid && savedPath != null)
                         {
                             using (RegistryKey writable = Registry.CurrentUser.OpenSubKey(runKey, true))
@@ -779,7 +779,7 @@ namespace MicMute
         /// </summary>
         private MicMuteSettings CaptureSettingsFromUI()
         {
-            // Sincroniza campos internos antes de capturar
+            // Synchronizes internal fields before capturing
             hotkey      = hotkeyTextBox.Hotkey;
             muteHotkey  = muteTextBox.Hotkey;
             unMuteHotkey = unmuteTextBox.Hotkey;
@@ -807,15 +807,15 @@ namespace MicMute
         }
 
         /// <summary>
-        /// Aplica um objeto MicMuteSettings nos controles da UI e nas variáveis internas.
-        /// Chamado no Load, após ler o arquivo JSON (para sobrepor o Registry).
+        /// Applies a MicMuteSettings object to UI controls and internal variables.
+        /// Called on Load, after reading the JSON file (to override Registry).
         /// </summary>
         private void ApplySettingsToUI(MicMuteSettings s)
         {
             if (s == null) return;
             try
             {
-                // Dispositivo
+                // Device
                 if (s.DeviceId != null) selectedDeviceId = s.DeviceId;
                 if (s.DeviceName != null) selectedDeviceName = s.DeviceName;
 
@@ -857,7 +857,7 @@ namespace MicMute
                     unmuteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
                 }
 
-                // Feedback sonoro
+                // Sound feedback
                 playSoundOnMute   = s.PlayMute;
                 playSoundOnUnmute = s.PlayUnmute;
                 soundMutePath   = s.SoundMutePath ?? "";
@@ -880,7 +880,7 @@ namespace MicMute
                 trackBarVolume.Value = soundVolume;
                 lblVolumeValue.Text = soundVolume + "%";
 
-                // Idioma
+                // Language
                 if (!string.IsNullOrEmpty(s.Language))
                 {
                     currentLang = s.Language;
@@ -893,23 +893,23 @@ namespace MicMute
                     cbLanguage.SelectedIndexChanged += CbLanguage_SelectedIndexChanged;
                 }
 
-                // Aplica idioma e atualiza dropdown/dispositivo
+                // Applies language and updates dropdown/device
                 ApplyLanguage(currentLang);
 
-                // Iniciar com Windows — isInitializing=true garante que o evento não dispara saves durante Apply
+                // Start with Windows — isInitializing=true ensures that the event does not trigger saves during Apply
                 bool startWithWin = s.StartWithWindows;
                 if (chkStartWithWindows.Checked != startWithWin)
                     chkStartWithWindows.Checked = startWithWin;
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[ApplySettingsToUI] Erro: " + ex.Message);
+                Console.WriteLine("[ApplySettingsToUI] Error: " + ex.Message);
             }
         }
 
         /// <summary>
-        /// Carrega as configurações do arquivo JSON via SettingsManager.
-        /// Retorna null se o arquivo não existir ou falhar.
+        /// Loads settings from the JSON file via SettingsManager.
+        /// Returns null if the file does not exist or fails.
         /// </summary>
         private MicMuteSettings LoadSettingsFromFile()
         {
@@ -917,8 +917,8 @@ namespace MicMute
         }
 
         /// <summary>
-        /// Captura a UI, salva no arquivo JSON e sincroniza as chaves relevantes no Registry.
-        /// Este é o único ponto de escrita; substitui a lógica dispersa anterior.
+        /// Captures the UI, saves to JSON file and synchronizes relevant keys in the Registry.
+        /// This is the only write point; replaces previous dispersed logic.
         /// </summary>
         private void SaveSettingsToFile()
         {
@@ -926,10 +926,10 @@ namespace MicMute
             {
                 MicMuteSettings s = CaptureSettingsFromUI();
 
-                // 1) Grava o arquivo JSON
+                // 1) Writes the JSON file
                 SettingsManager.Save(s);
 
-                // 2) Mantém o Registry sincronizado (compatibilidade com código externo)
+                // 2) Keeps the Registry synchronized (compatibility with external code)
                 if (s.Hotkey != null)
                     registryKey.SetValue(registryKeyName, s.Hotkey);
                 else
@@ -956,13 +956,13 @@ namespace MicMute
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[SaveSettingsToFile] Erro: " + ex.Message);
+                Console.WriteLine("[SaveSettingsToFile] Error: " + ex.Message);
             }
         }
 
         /// <summary>
-        /// Salva todas as configurações (JSON + Registry). Mantido para compatibilidade
-        /// com chamadas existentes (FormClosing, BtnVolDown/Up, CbLanguage).
+        /// Saves all settings (JSON + Registry). Maintained for compatibility
+        /// with existing calls (FormClosing, BtnVolDown/Up, CbLanguage).
         /// </summary>
         private void SaveSettings()
         {
@@ -1033,7 +1033,7 @@ namespace MicMute
                 selectedDeviceName = selectedItem.Text;
                 selectedDeviceId   = selectedItem.deviceId;
                 UpdateSelectedDevice();
-                SaveSettingsToFile(); // persiste imediatamente
+                SaveSettingsToFile(); // persists immediately
             }
         }
 
@@ -1059,7 +1059,7 @@ namespace MicMute
                     txtMutePath.Text = openFileDialog.FileName;
                     soundMutePath    = openFileDialog.FileName;
                     lblMuteFile.Text = Path.GetFileName(openFileDialog.FileName);
-                    SaveSettingsToFile(); // persiste imediatamente
+                    SaveSettingsToFile(); // persists immediately
                 }
             }
         }
@@ -1081,7 +1081,7 @@ namespace MicMute
                     txtUnmutePath.Text = openFileDialog.FileName;
                     soundUnmutePath    = openFileDialog.FileName;
                     lblUnmuteFile.Text = Path.GetFileName(openFileDialog.FileName);
-                    SaveSettingsToFile(); // persiste imediatamente
+                    SaveSettingsToFile(); // persists immediately
                 }
             }
         }
@@ -1286,20 +1286,20 @@ namespace MicMute
 
     public class FluentMenuRenderer : ToolStripProfessionalRenderer
     {
-        // Raio dos cantos — deve ser idêntico ao usado na Region e na borda
+        // Corner radius — must be identical to the one used in Region and border
         private const int MenuRadius   = 8;
-        // Raio do highlight por item — menor que o do menu
+        // Highlight radius per item — smaller than the menu's
         private const int ItemRadius   = 4;
-        // Cor de fundo do menu
+        // Menu background color
         private static readonly Color BgColor       = Color.FromArgb(45, 45, 45);
-        // Cor de highlight ao passar o mouse
+        // Highlight color on hover
         private static readonly Color HoverColor     = Color.FromArgb(68, 68, 78);
 
         public FluentMenuRenderer() : base(new FluentColorTable()) { }
 
-        // ── Fundo geral do strip ─────────────────────────────────────────────────
-        // Usa FillPath em vez de FillRectangle para que o preenchimento
-        // respeite a Region arredondada, evitando pixels "quadrados" nos cantos.
+        // ── General background of the strip ───────────────────────────────────────
+        // Uses FillPath instead of FillRectangle so that the filling
+        // respects the rounded Region, avoiding "square" pixels at the corners.
         protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -1311,16 +1311,16 @@ namespace MicMute
             }
         }
 
-        // ── Highlight do item selecionado ────────────────────────────────────────
-        // Inset horizontal fixo (4px) + inset vertical proporcional (2px),
-        // garantindo que o pill não toque nas bordas do menu.
+        // ── Selected item highlight ────────────────────────────────────────
+        // Fixed horizontal inset (4px) + proportional vertical inset (2px),
+        // ensuring that the pill doesn't touch the menu borders.
         protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
         {
             if (!e.Item.Selected) return;
 
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
-            // inset: 4px laterais, 2px topo/base — visual "pill" compacto
+            // inset: 4px lateral, 2px top/base — compact "pill" visual
             const int hInset = 4;
             const int vInset = 2;
             Rectangle rect = new Rectangle(
@@ -1336,29 +1336,29 @@ namespace MicMute
             }
         }
 
-        // ── Texto dos itens ──────────────────────────────────────────────────────
+        // ── Item text ──────────────────────────────────────────────────────
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
             e.TextColor = FluentTheme.TextPrimary;
             base.OnRenderItemText(e);
         }
 
-        // ── Margem de imagem (desativada, mas precisa ser pintada para não vazar) ─
+        // ── Image margin (disabled, but needs to be painted to not leak) ─
         protected override void OnRenderImageMargin(ToolStripRenderEventArgs e)
         {
-            // ShowImageMargin = false, mas o renderer ainda chama este método;
-            // pintar com a mesma cor de fundo evita artefatos.
+            // ShowImageMargin = false, but the renderer still calls this method;
+            // painting with the same background color avoids artifacts.
             using (SolidBrush brush = new SolidBrush(BgColor))
                 e.Graphics.FillRectangle(brush, e.AffectedBounds);
         }
 
-        // ── Borda externa do menu ────────────────────────────────────────────────
-        // Raio idêntico ao da Region (8px) para que a borda desenhada pelo GDI+
-        // fique alinhada ao clip, sem "borda quadrada" visível além do arredondamento.
+        // ── Menu external border ────────────────────────────────────────────────
+        // Radius identical to the Region (8px) so that the border drawn by GDI+
+        // stays aligned to the clip, without a visible "square border" beyond the rounding.
         protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e)
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            // Recuo de 0.5px para a borda cair dentro do clip da Region
+            // 0.5px indentation for the border to fall inside the Region clip
             Rectangle rect = new Rectangle(0, 0, e.ToolStrip.Width - 1, e.ToolStrip.Height - 1);
             using (GraphicsPath path = FluentTheme.GetRoundedPath(rect, MenuRadius))
             using (Pen pen = new Pen(FluentTheme.CardBorder, 1f))
@@ -1367,13 +1367,13 @@ namespace MicMute
             }
         }
 
-        // ── Separador ────────────────────────────────────────────────────────────
+        // ── Separator ────────────────────────────────────────────────────────────
         protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
         {
             int midY = e.Item.Height / 2;
             using (Pen pen = new Pen(FluentTheme.CardBorder, 1f))
             {
-                // Recuo horizontal de 8px para o separador não tocar as bordas arredondadas
+                // Horizontal indentation of 8px so the separator doesn't touch the rounded borders
                 e.Graphics.DrawLine(pen, 8, midY, e.ToolStrip.Width - 8, midY);
             }
         }
