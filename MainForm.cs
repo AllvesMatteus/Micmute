@@ -252,77 +252,94 @@ namespace MicMute
             muteTextBox.Leave   += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
             unmuteTextBox.Leave += (s, ev) => { if (!isInitializing) SaveSettingsToFile(); };
 
-            // Detecta se é a primeira execução (sem JSON e sem chaves no registry)
+            // Load saved settings (JSON or Registry migration or defaults)
+            MicMuteSettings savedSettings = SettingsManager.Load();
             bool isFirstRun = !File.Exists(SettingsManager.SettingsFilePath) && (registryKey.ValueCount == 0);
 
-            if (isFirstRun)
+            if (savedSettings == null)
             {
-                selectedDeviceId = "";
-                selectedDeviceName = DEFAULT_RECORDING_DEVICE;
-                playSoundOnMute = true;
-                playSoundOnUnmute = true;
+                savedSettings = new MicMuteSettings();
 
-                string muteMp3 = @"assets\sounds\muted.mp3";
-                soundMutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, muteMp3)) ? muteMp3 : @"assets\sounds\muted.wav";
-
-                string unmuteMp3 = @"assets\sounds\unmuted.mp3";
-                soundUnmutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, unmuteMp3)) ? unmuteMp3 : @"assets\sounds\unmuted.wav";
-
-                soundVolume = 100;
-                currentLang = "PT";
-            }
-            else
-            {
-                selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
-                selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
-
-                playSoundOnMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 1) == 1;
-                playSoundOnUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
-
-                soundMutePath = (string)registryKey.GetValue(registrySoundMutePath);
-                if (string.IsNullOrEmpty(soundMutePath) || !File.Exists(ResolveSoundPath(soundMutePath)) || soundMutePath == @"assets\sounds\muted.wav")
+                if (registryKey.ValueCount > 0)
                 {
-                    string mp3Path = @"assets\sounds\muted.mp3";
-                    if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                    // Migra do Registry para o JSON uma única vez
+                    savedSettings.DeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
+                    savedSettings.DeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
+                    savedSettings.PlayMute = Convert.ToInt32(registryKey.GetValue(registryPlayMute) ?? 1) == 1;
+                    savedSettings.PlayUnmute = Convert.ToInt32(registryKey.GetValue(registryPlayUnmute) ?? 0) == 1;
+
+                    string regMutePath = (string)registryKey.GetValue(registrySoundMutePath);
+                    if (string.IsNullOrEmpty(regMutePath) || !File.Exists(ResolveSoundPath(regMutePath)) || regMutePath == @"assets\sounds\muted.wav")
                     {
-                        soundMutePath = mp3Path;
+                        string mp3Path = @"assets\sounds\muted.mp3";
+                        savedSettings.SoundMutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)) ? mp3Path : @"assets\sounds\muted.wav";
                     }
                     else
                     {
-                        soundMutePath = @"assets\sounds\muted.wav";
+                        savedSettings.SoundMutePath = regMutePath;
                     }
-                }
 
-                soundUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath);
-                if (string.IsNullOrEmpty(soundUnmutePath) || !File.Exists(ResolveSoundPath(soundUnmutePath)) || soundUnmutePath == @"assets\sounds\unmuted.wav")
-                {
-                    string mp3Path = @"assets\sounds\unmuted.mp3";
-                    if (File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)))
+                    string regUnmutePath = (string)registryKey.GetValue(registrySoundUnmutePath);
+                    if (string.IsNullOrEmpty(regUnmutePath) || !File.Exists(ResolveSoundPath(regUnmutePath)) || regUnmutePath == @"assets\sounds\unmuted.wav")
                     {
-                        soundUnmutePath = mp3Path;
+                        string mp3Path = @"assets\sounds\unmuted.mp3";
+                        savedSettings.SoundUnmutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, mp3Path)) ? mp3Path : @"assets\sounds\unmuted.wav";
                     }
                     else
                     {
-                        soundUnmutePath = @"assets\sounds\unmuted.wav";
+                        savedSettings.SoundUnmutePath = regUnmutePath;
+                    }
+
+                    savedSettings.SoundVolume = registryKey.GetValue("SoundVolume") != null ? Convert.ToInt32(registryKey.GetValue("SoundVolume")) : 100;
+                    savedSettings.Language = (string)registryKey.GetValue("Language") ?? "PT";
+
+                    var hotkeyValue = registryKey.GetValue(registryKeyName);
+                    if (hotkeyValue != null) savedSettings.Hotkey = hotkeyValue.ToString();
+
+                    var muteKeyValue = registryKey.GetValue(registryKeyMute);
+                    if (muteKeyValue != null) savedSettings.HotkeyMute = muteKeyValue.ToString();
+
+                    var unmuteKeyValue = registryKey.GetValue(registryKeyUnmute);
+                    if (unmuteKeyValue != null) savedSettings.HotkeyUnmute = unmuteKeyValue.ToString();
+
+                    string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+                    using (RegistryKey key = Registry.CurrentUser.OpenSubKey(runKey, false))
+                    {
+                        if (key != null)
+                        {
+                            string savedPath = key.GetValue("MicMute") as string;
+                            savedSettings.StartWithWindows = !string.IsNullOrEmpty(savedPath) && File.Exists(savedPath.Trim('"'));
+                        }
                     }
                 }
+                else
+                {
+                    // Primeira execução de verdade: aplica defaults
+                    savedSettings.DeviceId = "";
+                    savedSettings.DeviceName = DEFAULT_RECORDING_DEVICE;
+                    savedSettings.PlayMute = true;
+                    savedSettings.PlayUnmute = true;
 
-                soundVolume = registryKey.GetValue("SoundVolume") != null ? Convert.ToInt32(registryKey.GetValue("SoundVolume")) : 100;
-                currentLang = (string)registryKey.GetValue("Language") ?? "PT";
+                    string muteMp3 = @"assets\sounds\muted.mp3";
+                    savedSettings.SoundMutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, muteMp3)) ? muteMp3 : @"assets\sounds\muted.wav";
+
+                    string unmuteMp3 = @"assets\sounds\unmuted.mp3";
+                    savedSettings.SoundUnmutePath = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, unmuteMp3)) ? unmuteMp3 : @"assets\sounds\unmuted.wav";
+
+                    savedSettings.SoundVolume = 100;
+                    savedSettings.Language = "PT";
+                    savedSettings.StartWithWindows = false;
+
+                    // Default hotkey: Ctrl + Alt + , (Alt, Control, Oemcomma)
+                    var defaultHotkey = new Hotkey(Modifiers.Control | Modifiers.Alt, Keys.Oemcomma);
+                    savedSettings.Hotkey = defaultHotkey.ToString();
+                    savedSettings.HotkeyMute = null;
+                    savedSettings.HotkeyUnmute = null;
+                }
+
+                // Grava as configurações no arquivo JSON
+                SettingsManager.Save(savedSettings);
             }
-
-            trackBarVolume.Value = soundVolume;
-            lblVolumeValue.Text = soundVolume + "%";
-            cbLanguage.SelectedIndex = (currentLang == "EN") ? 1 : 0;
-
-            chkPlayMute.Checked = playSoundOnMute;
-            chkPlayUnmute.Checked = playSoundOnUnmute;
-            txtMutePath.Text = soundMutePath;
-            txtUnmutePath.Text = soundUnmutePath;
-
-            // Display short names for files
-            lblMuteFile.Text = string.IsNullOrEmpty(soundMutePath) ? (currentLang == "EN" ? "No sound" : "Nenhum som") : Path.GetFileName(soundMutePath);
-            lblUnmuteFile.Text = string.IsNullOrEmpty(soundUnmutePath) ? (currentLang == "EN" ? "No sound" : "Nenhum som") : Path.GetFileName(soundUnmutePath);
 
             // Wire custom ToggleSwitch events — atualiza variável e salva imediatamente
             chkPlayMute.CheckedChanged += (s, ev) => { if (isInitializing) return; playSoundOnMute = chkPlayMute.Checked; SaveSettingsToFile(); };
@@ -354,56 +371,29 @@ namespace MicMute
 
             if (iconOn != null) this.Icon = iconOn;
 
-            // Load auto-start state
+            // Load auto-start state (Registry Run)
             LoadStartupSettings();
             chkStartWithWindows.CheckedChanged += (s, ev) => { if (isInitializing) return; SaveStartupSettings(); SaveSettingsToFile(); };
 
             LoadMicsDropdown();
             UpdateSelectedDevice();
-            
+
             AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
-            
+
             // Register Keyboard Hook
             globalHook.KeyDown += GlobalHook_KeyDown;
             globalHook.Hook();
 
-            // Load saved hotkeys
-            var hotkeyValue = registryKey.GetValue(registryKeyName);
-            if (hotkeyValue != null)
-            {
-                var converter = new Shortcut.Forms.HotkeyConverter();
-                hotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-            }
-
-            hotkeyValue = registryKey.GetValue(registryKeyMute);
-            if (hotkeyValue != null)
-            {
-                var converter = new Shortcut.Forms.HotkeyConverter();
-                muteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-            }
-
-            hotkeyValue = registryKey.GetValue(registryKeyUnmute);
-            if (hotkeyValue != null)
-            {
-                var converter = new Shortcut.Forms.HotkeyConverter();
-                unMuteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-            }
-
-            ApplyLanguage(currentLang);
-
-            // Carrega configurações do arquivo JSON (sobrepõe Registry se arquivo existir)
-            var savedSettings = LoadSettingsFromFile();
-            if (savedSettings != null)
-            {
-                ApplySettingsToUI(savedSettings);
-            }
+            // Aplica as configurações salvas na UI e variáveis internas
+            ApplySettingsToUI(savedSettings);
 
             // A partir daqui os eventos de UI podem disparar saves normalmente
             isInitializing = false;
 
-            if (isFirstRun && savedSettings == null)
+            // Garante que o Registry e o JSON estão sincronizados na primeira execução ou se o Registry foi limpo
+            if (isFirstRun || registryKey.ValueCount == 0)
             {
-                SaveSettingsToFile(); // persiste os padrões na primeira execução
+                SaveSettings();
             }
         }
 
@@ -836,15 +826,35 @@ namespace MicMute
                     hotkey = (Hotkey)converter.ConvertFromString(s.Hotkey);
                     hotkeyTextBox.Hotkey = hotkey;
                 }
+                else
+                {
+                    hotkey = null;
+                    hotkeyTextBox.Hotkey = null;
+                    hotkeyTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
+                }
+
                 if (!string.IsNullOrEmpty(s.HotkeyMute))
                 {
                     muteHotkey = (Hotkey)converter.ConvertFromString(s.HotkeyMute);
                     muteTextBox.Hotkey = muteHotkey;
                 }
+                else
+                {
+                    muteHotkey = null;
+                    muteTextBox.Hotkey = null;
+                    muteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
+                }
+
                 if (!string.IsNullOrEmpty(s.HotkeyUnmute))
                 {
                     unMuteHotkey = (Hotkey)converter.ConvertFromString(s.HotkeyUnmute);
                     unmuteTextBox.Hotkey = unMuteHotkey;
+                }
+                else
+                {
+                    unMuteHotkey = null;
+                    unmuteTextBox.Hotkey = null;
+                    unmuteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
                 }
 
                 // Feedback sonoro
@@ -870,36 +880,26 @@ namespace MicMute
                 trackBarVolume.Value = soundVolume;
                 lblVolumeValue.Text = soundVolume + "%";
 
-                // Idioma (só altera o índice do combo; ApplyLanguage já foi chamada no Load;
-                // aqui apenas sincronizamos a variável e o combo sem disparar o evento)
-                if (!string.IsNullOrEmpty(s.Language) && s.Language != currentLang)
+                // Idioma
+                if (!string.IsNullOrEmpty(s.Language))
                 {
                     currentLang = s.Language;
-                    int langIdx = (currentLang == "EN") ? 1 : 0;
-                    if (cbLanguage.SelectedIndex != langIdx)
-                    {
-                        cbLanguage.SelectedIndexChanged -= CbLanguage_SelectedIndexChanged;
-                        cbLanguage.SelectedIndex = langIdx;
-                        cbLanguage.SelectedIndexChanged += CbLanguage_SelectedIndexChanged;
-                    }
-                    ApplyLanguage(currentLang);
                 }
+                int langIdx = (currentLang == "EN") ? 1 : 0;
+                if (cbLanguage.SelectedIndex != langIdx)
+                {
+                    cbLanguage.SelectedIndexChanged -= CbLanguage_SelectedIndexChanged;
+                    cbLanguage.SelectedIndex = langIdx;
+                    cbLanguage.SelectedIndexChanged += CbLanguage_SelectedIndexChanged;
+                }
+
+                // Aplica idioma e atualiza dropdown/dispositivo
+                ApplyLanguage(currentLang);
 
                 // Iniciar com Windows — isInitializing=true garante que o evento não dispara saves durante Apply
                 bool startWithWin = s.StartWithWindows;
-                // Lê a realidade do Registry para decidir se precisa mudar
-                string runKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-                bool currentlyInRun = false;
-                using (var rk = Registry.CurrentUser.OpenSubKey(runKey, false))
-                    currentlyInRun = rk?.GetValue("MicMute") != null;
-
-                // Aplica apenas se diferente para não disparar saves desnecessários
                 if (chkStartWithWindows.Checked != startWithWin)
                     chkStartWithWindows.Checked = startWithWin;
-
-                // Reload do dropdown para refletir o dispositivo salvo
-                LoadMicsDropdown();
-                UpdateSelectedDevice();
             }
             catch (Exception ex)
             {
@@ -1011,6 +1011,7 @@ namespace MicMute
         private void ExitMenuItem_Click(object sender, EventArgs e)
         {
             isExiting = true;
+            SaveSettings();
             globalHook.Unhook();
             SetTrayIcon(null);
             Application.Exit();
@@ -1024,7 +1025,7 @@ namespace MicMute
 
         private void CbMics_SelectedIndexChanged(object sender, EventArgs e)
         {
-            if (isLoadingMics) return;
+            if (isInitializing || isLoadingMics) return;
 
             ComboboxItem selectedItem = (ComboboxItem)cbMics.SelectedItem;
             if (selectedItem != null)
@@ -1189,6 +1190,7 @@ namespace MicMute
 
         private void CbLanguage_SelectedIndexChanged(object sender, EventArgs e)
         {
+            if (isInitializing) return;
             currentLang = (cbLanguage.SelectedIndex == 1) ? "EN" : "PT";
             ApplyLanguage(currentLang);
             SaveSettings();
@@ -1196,6 +1198,7 @@ namespace MicMute
 
         private void TrackBarVolume_Scroll(object sender, EventArgs e)
         {
+            if (isInitializing) return;
             soundVolume = trackBarVolume.Value;
             lblVolumeValue.Text = soundVolume + "%";
             SaveSettingsToFile(); // Salva a alteração imediatamente
@@ -1212,6 +1215,8 @@ namespace MicMute
                 string result = text
                     .Replace("Nenhum", "None")
                     .Replace("Control", "Ctrl")
+                    .Replace("Oemcomma", "Comma")
+                    .Replace("Vírgula", "Comma")
                     .Replace("Retorno", "Enter")
                     .Replace("Retroceder", "Backspace")
                     .Replace("Espaço", "Space")
@@ -1223,7 +1228,6 @@ namespace MicMute
                     .Replace("Acento til", "Tilde")
                     .Replace("Acento circunflexo", "Circumflex")
                     .Replace("Acento agudo", "Acute")
-                    .Replace("Vírgula", "Comma")
                     .Replace("Ponto", "Period")
                     .Replace("Barra", "Slash")
                     .Replace("Barra invertida", "Backslash")
@@ -1242,6 +1246,8 @@ namespace MicMute
                 string result = text
                     .Replace("None", "Nenhum")
                     .Replace("Ctrl", "Control")
+                    .Replace("Oemcomma", "Vírgula")
+                    .Replace("Comma", "Vírgula")
                     .Replace("Enter", "Retorno")
                     .Replace("Backspace", "Retroceder")
                     .Replace("Space", "Espaço")
@@ -1252,7 +1258,6 @@ namespace MicMute
                     .Replace("Tilde", "Acento til")
                     .Replace("Circumflex", "Acento circunflexo")
                     .Replace("Acute", "Acento agudo")
-                    .Replace("Comma", "Vírgula")
                     .Replace("Period", "Ponto")
                     .Replace("Slash", "Barra")
                     .Replace("Backslash", "Barra invertida")
