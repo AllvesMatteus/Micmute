@@ -89,6 +89,12 @@ Desenvolvido com carinho por **Mateus Alves**. Conecte-se comigo!
 
 ---
 
+## 🤝 Créditos e Agradecimentos
+
+Este projeto foi baseado no trabalho original de [@Anc813](https://github.com/Anc813) no repositório [Anc813/MicMute](https://github.com/Anc813/MicMute). Agradecimentos especiais ao autor original pela base do código e pela ideia.
+
+---
+
 ## 📄 Licença
 
 Este projeto está licenciado sob a licença MIT - consulte o arquivo [LICENSE](LICENSE) para obter mais detalhes.
