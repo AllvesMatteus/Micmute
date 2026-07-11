@@ -32,6 +32,8 @@ Projetado com uma interface escura (Dark Theme) moderna no estilo Windows 11, o 
 1. **Baixe o Instalador**: Acesse a aba de [Releases](https://github.com/AllvesMatteus/MicMute/releases) e faça o download do `MicMute_Setup.exe`.
 2. **Requisitos de Sistema**: O aplicativo roda em qualquer versão do Windows (Windows 7 SP1, 8, 8.1, 10, 11) com o **Microsoft .NET Framework 4.8**. O instalador verificará a presença dele automaticamente. Todas as dependências adicionais (.DLLs) estão totalmente embutidas no executável principal.
 3. **Execute a Instalação**: Siga os passos na tela e selecione a pasta de instalação desejada (o padrão é `C:\Program Files (x86)\MicMute`).
+
+> 🔏 O instalador do MicMute é assinado digitalmente pela [SignPath Foundation](https://signpath.org) — uma organização sem fins lucrativos que fornece assinatura de código gratuita para projetos open source.
 4. **Inicie o Aplicativo**: O MicMute iniciará minimizado diretamente na sua bandeja do sistema (ao lado do relógio).
 
 ---
