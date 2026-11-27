@@ -111,6 +111,8 @@
     <Compile Include="AboutForm.Designer.cs">
       <DependentUpon>AboutForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="AppGuard.cs" />
+    <Compile Include="UpdateService.cs" />
     <Compile Include="AppSettings.cs" />
     <Compile Include="ModernControls.cs" />
     <Compile Include="Program.cs" />

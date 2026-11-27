@@ -34,6 +34,9 @@ namespace MicMute
 
         // --- Start with Windows ---
         [DataMember] public bool StartWithWindows { get; set; } = false;
+
+        // --- Auto-update (false = default; set true in settings.json to disable automatic checks) ---
+        [DataMember] public bool DisableAutoUpdate { get; set; } = false;
     }
 
     /// <summary>

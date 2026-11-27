@@ -1,6 +1,13 @@
+; Version is injected by publish\publish.ps1 (ISCC /DMyAppVersion=x.y.z) and must match AssemblyInfo.cs
+#ifndef MyAppVersion
+  #define MyAppVersion "0.2.0.0"
+#endif
+
 [Setup]
 AppName=MicMute
-AppVersion=1.0.0
+AppVersion={#MyAppVersion}
+CloseApplications=yes
+RestartApplications=no
 DefaultDirName={commonpf32}\MicMute
 DisableDirPage=no
 AppendDefaultDirName=no
@@ -8,7 +15,7 @@ DefaultGroupName=MicMute
 OutputBaseFilename=MicMute_Setup
 Compression=lzma
 SolidCompression=yes
-OutputDir=d:\Developer\sandbox\MicMute\bin\MicMute Installer
+OutputDir={#SourcePath}bin\MicMute Installer
 SetupIconFile=favicon.ico
 ArchitecturesInstallIn64BitMode=x64compatible
 
@@ -34,18 +41,18 @@ Type: files; Name: "{app}\assets\sounds\muted.mp3"
 Type: files; Name: "{app}\assets\sounds\unmuted.mp3"
 
 [Files]
-Source: "d:\Developer\sandbox\MicMute\bin\Release\MicMute.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\bin\Release\MicMute.exe.config"; DestDir: "{app}"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\folder.ico"; DestDir: "{app}"; Flags: ignoreversion; Attribs: hidden system
-Source: "d:\Developer\sandbox\MicMute\desktop.ini"; DestDir: "{app}"; Flags: ignoreversion; Attribs: hidden system
-Source: "d:\Developer\sandbox\MicMute\assets\icons\micon.ico"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\icons\micmute.ico"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\icons\micon.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\icons\micmute.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\icons\github.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\icons\linkedin.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
-Source: "d:\Developer\sandbox\MicMute\assets\sounds\muted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "d:\Developer\sandbox\MicMute\assets\sounds\unmuted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#SourcePath}bin\Release\MicMute.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}bin\Release\MicMute.exe.config"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#SourcePath}folder.ico"; DestDir: "{app}"; Flags: ignoreversion; Attribs: hidden system
+Source: "{#SourcePath}desktop.ini"; DestDir: "{app}"; Flags: ignoreversion; Attribs: hidden system
+Source: "{#SourcePath}assets\icons\micon.ico"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
+Source: "{#SourcePath}assets\icons\micmute.ico"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
+Source: "{#SourcePath}assets\icons\micon.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
+Source: "{#SourcePath}assets\icons\micmute.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
+Source: "{#SourcePath}assets\icons\github.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
+Source: "{#SourcePath}assets\icons\linkedin.png"; DestDir: "{app}\assets\icons"; Flags: ignoreversion
+Source: "{#SourcePath}assets\sounds\muted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "{#SourcePath}assets\sounds\unmuted.mp3"; DestDir: "{app}\assets\sounds"; Flags: ignoreversion skipifsourcedoesntexist
 
 
 [Icons]
@@ -54,6 +61,8 @@ Name: "{commondesktop}\MicMute"; Filename: "{app}\MicMute.exe"
 
 [Run]
 Filename: "{app}\MicMute.exe"; Description: "Iniciar o MicMute"; Flags: nowait postinstall skipifsilent
+; Silent install = automatic update from inside the app: relaunch MicMute when done
+Filename: "{app}\MicMute.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
 
 [Code]
 // ---------------------------------------------------------------------------

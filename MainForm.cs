@@ -98,21 +98,172 @@ namespace MicMute
             InitializeComponent();
         }
 
+        // ─── Auto-update ──────────────────────────────────────────────────────────
+
+        private UpdateService updater;
+        private ToolStripMenuItem updateMenuItem;
+        private UpdateState lastUpdateState = UpdateState.Idle;
+        private bool manualUpdateCheck;
+        private bool disableAutoUpdate;
+
+        private void InitUpdater()
+        {
+            updater = new UpdateService();
+            updater.StateChanged += () =>
+            {
+                try
+                {
+                    if (IsDisposed || !IsHandleCreated) return;
+                    BeginInvoke(new Action(OnUpdateStateChanged));
+                }
+                catch { }
+            };
+            icon.BalloonTipClicked += (s, e) => { if (updater.State == UpdateState.Downloaded) InstallUpdateAndExit(); };
+
+            if (!disableAutoUpdate) updater.StartAutomatic();
+            RefreshUpdateMenu();
+        }
+
+        private void UpdateMenuItem_Click(object sender, EventArgs e)
+        {
+            if (updater == null) return;
+            if (updater.State == UpdateState.Downloaded)
+            {
+                InstallUpdateAndExit();
+            }
+            else
+            {
+                manualUpdateCheck = true;
+                updater.CheckAsync(true);
+            }
+        }
+
+        private void InstallUpdateAndExit()
+        {
+            if (updater != null && updater.LaunchInstaller())
+            {
+                ExitMenuItem_Click(null, EventArgs.Empty);
+            }
+        }
+
+        private void OnUpdateStateChanged()
+        {
+            RefreshUpdateMenu();
+            UpdateState st = updater.State;
+            bool en = currentLang == "EN";
+
+            if (st != lastUpdateState)
+            {
+                if (st == UpdateState.Downloaded)
+                {
+                    icon.ShowBalloonTip(8000,
+                        en ? "MicMute update ready" : "Atualização do MicMute pronta",
+                        en ? "Version " + updater.LatestVersion + " downloaded. Click here to restart and update."
+                           : "Versão " + updater.LatestVersion + " baixada. Clique aqui para reiniciar e atualizar.",
+                        ToolTipIcon.Info);
+                }
+                else if (st == UpdateState.UpToDate && manualUpdateCheck)
+                {
+                    icon.ShowBalloonTip(4000, "MicMute",
+                        en ? "You are already on the latest version." : "Você já está na versão mais recente.",
+                        ToolTipIcon.Info);
+                }
+                else if (st == UpdateState.Error && manualUpdateCheck)
+                {
+                    icon.ShowBalloonTip(5000, "MicMute",
+                        (en ? "Could not check for updates: " : "Não foi possível verificar atualizações: ") + updater.ErrorMessage,
+                        ToolTipIcon.Warning);
+                }
+
+                if (st == UpdateState.UpToDate || st == UpdateState.Error || st == UpdateState.Downloaded)
+                    manualUpdateCheck = false;
+            }
+            lastUpdateState = st;
+        }
+
+        private void RefreshUpdateMenu()
+        {
+            if (updateMenuItem == null) return;
+            bool en = currentLang == "EN";
+            UpdateState st = updater != null ? updater.State : UpdateState.Idle;
+
+            switch (st)
+            {
+                case UpdateState.Checking:
+                    updateMenuItem.Text = en ? "Checking for updates..." : "Verificando atualizações...";
+                    updateMenuItem.Enabled = false;
+                    break;
+                case UpdateState.Available:
+                    updateMenuItem.Text = en ? "Update found..." : "Atualização encontrada...";
+                    updateMenuItem.Enabled = false;
+                    break;
+                case UpdateState.Downloading:
+                    updateMenuItem.Text = (en ? "Downloading update... " : "Baixando atualização... ") + updater.Progress + "%";
+                    updateMenuItem.Enabled = false;
+                    break;
+                case UpdateState.Downloaded:
+                    updateMenuItem.Text = (en ? "Restart to update (v" : "Reiniciar para atualizar (v") + updater.LatestVersion + ")";
+                    updateMenuItem.Enabled = true;
+                    break;
+                default:
+                    updateMenuItem.Text = en ? "Check for updates" : "Verificar atualizações";
+                    updateMenuItem.Enabled = true;
+                    break;
+            }
+        }
+
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
             ApplyWindowTheme();
         }
 
+        private System.Windows.Forms.Timer deviceChangeTimer;
+
+        /// <summary>
+        /// Called by AudioSwitcher on an audio/COM thread. It must NEVER block that thread
+        /// (a synchronous Invoke here deadlocks with the UI thread when a USB/Bluetooth audio
+        /// device is reconnected), so we only post a message and debounce the burst of events.
+        /// </summary>
         private void OnNextDevice(DeviceChangedArgs next)
         {
-            if (InvokeRequired)
+            try
             {
-                Invoke(new Action(UpdateSelectedDevice));
+                if (IsDisposed || !IsHandleCreated) return;
+                BeginInvoke(new Action(ScheduleDeviceRefresh));
             }
-            else
+            catch (Exception ex)
             {
+                AppLog.Write("OnNextDevice failed", ex);
+            }
+        }
+
+        private void ScheduleDeviceRefresh()
+        {
+            if (deviceChangeTimer == null)
+            {
+                deviceChangeTimer = new System.Windows.Forms.Timer { Interval = 800 };
+                deviceChangeTimer.Tick += (s, e) =>
+                {
+                    deviceChangeTimer.Stop();
+                    RefreshDevicesSafe();
+                };
+            }
+            // Reconnecting a hub fires many events in a row: restart the timer and refresh once.
+            deviceChangeTimer.Stop();
+            deviceChangeTimer.Start();
+        }
+
+        private void RefreshDevicesSafe()
+        {
+            try
+            {
+                if (MyVisible) LoadMicsDropdown();
                 UpdateSelectedDevice();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Write("RefreshDevicesSafe failed", ex);
             }
         }
 
@@ -127,35 +278,59 @@ namespace MicMute
         private void LoadMicsDropdown()
         {
             isLoadingMics = true;
-            cbMics.Items.Clear();
-
-            ComboboxItem defaultItem = new ComboboxItem();
-            defaultItem.Text = DEFAULT_RECORDING_DEVICE;
-            defaultItem.deviceId = "";
-            cbMics.Items.Add(defaultItem);
-
-            int selectedIndex = 0;
-            int index = 1;
-
-            foreach (CoreAudioDevice device in AudioController.GetCaptureDevices())
+            try
             {
-                if (device.State == DeviceState.Active)
-                {
-                    ComboboxItem item = new ComboboxItem();
-                    item.Text = device.FullName;
-                    item.deviceId = device.Id.ToString();
-                    cbMics.Items.Add(item);
+                cbMics.Items.Clear();
 
-                    if (item.deviceId == selectedDeviceId)
+                ComboboxItem defaultItem = new ComboboxItem();
+                defaultItem.Text = DEFAULT_RECORDING_DEVICE;
+                defaultItem.deviceId = "";
+                cbMics.Items.Add(defaultItem);
+
+                int selectedIndex = 0;
+                int index = 1;
+
+                var devices = AudioController.GetCaptureDevices();
+                if (devices != null)
+                {
+                    foreach (CoreAudioDevice device in devices)
                     {
-                        selectedIndex = index;
+                        try
+                        {
+                            if (device != null && device.State == DeviceState.Active)
+                            {
+                                ComboboxItem item = new ComboboxItem();
+                                item.Text = device.FullName ?? "Microphone";
+                                item.deviceId = device.Id.ToString();
+                                cbMics.Items.Add(item);
+
+                                if (item.deviceId == selectedDeviceId)
+                                {
+                                    selectedIndex = index;
+                                }
+                                index++;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Write("Skipped unstable audio device during enumeration", ex);
+                        }
                     }
-                    index++;
+                }
+
+                if (cbMics.Items.Count > 0)
+                {
+                    cbMics.SelectedIndex = Math.Min(selectedIndex, cbMics.Items.Count - 1);
                 }
             }
-
-            cbMics.SelectedIndex = selectedIndex;
-            isLoadingMics = false;
+            catch (Exception ex)
+            {
+                AppLog.Write("LoadMicsDropdown failed", ex);
+            }
+            finally
+            {
+                isLoadingMics = false;
+            }
         }
 
         private void MyShow()
@@ -178,6 +353,12 @@ namespace MicMute
             ApplyWindowTheme();
 
             // ── Tray context menu ─────────────────────────────────────────
+            // "Check for updates / Restart to update" entry (between Settings and Close)
+            updateMenuItem = new ToolStripMenuItem();
+            updateMenuItem.Click += UpdateMenuItem_Click;
+            iconContextMenu.Items.Insert(1, updateMenuItem);
+            RefreshUpdateMenu();
+
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
@@ -390,6 +571,11 @@ namespace MicMute
             // From here on, UI events can trigger saves normally
             isInitializing = false;
 
+            // Self-healing and update infrastructure
+            SingleInstance.StartListener(this, () => HotkeyToolStripMenuItem_Click(null, EventArgs.Empty));
+            Watchdog.Start();
+            InitUpdater();
+
             // Ensures Registry and JSON are synchronized on first run or if Registry was cleared
             if (isFirstRun || registryKey.ValueCount == 0)
             {
@@ -399,20 +585,28 @@ namespace MicMute
 
         private void GlobalHook_KeyDown(object sender, KeyEventArgs e)
         {
-            if (MatchesHotkey(hotkey, e))
+            try
             {
-                ToggleMicStatus();
-                e.Handled = true;
+                // Return immediately from WH_KEYBOARD_LL so Windows never times out or unhooks our global shortcut listener.
+                if (MatchesHotkey(hotkey, e))
+                {
+                    e.Handled = true;
+                    BeginInvoke(new Action(ToggleMicStatus));
+                }
+                else if (MatchesHotkey(muteHotkey, e))
+                {
+                    e.Handled = true;
+                    BeginInvoke(new Action(MuteMicStatus));
+                }
+                else if (MatchesHotkey(unMuteHotkey, e))
+                {
+                    e.Handled = true;
+                    BeginInvoke(new Action(UnMuteMicStatus));
+                }
             }
-            else if (MatchesHotkey(muteHotkey, e))
+            catch (Exception ex)
             {
-                MuteMicStatus();
-                e.Handled = true;
-            }
-            else if (MatchesHotkey(unMuteHotkey, e))
-            {
-                UnMuteMicStatus();
-                e.Handled = true;
+                AppLog.Write("GlobalHook_KeyDown failed", ex);
             }
         }
 
@@ -456,22 +650,39 @@ namespace MicMute
 
         private void OnMuteChanged(DeviceMuteChangedArgs next)
         {
-            if (InvokeRequired)
+            // Audio thread: post asynchronously, never block it (see OnNextDevice).
+            try
             {
-                Invoke(new Action(() => UpdateStatus(next.Device)));
+                if (IsDisposed || !IsHandleCreated) return;
+                var device = next.Device;
+                BeginInvoke(new Action(() =>
+                {
+                    try { UpdateStatus(device); }
+                    catch (Exception ex) { AppLog.Write("UpdateStatus (mute changed) failed", ex); }
+                }));
             }
-            else
+            catch (Exception ex)
             {
-                UpdateStatus(next.Device);
+                AppLog.Write("OnMuteChanged failed", ex);
             }
         }
 
         IDisposable muteChangedSubscription;
         public void UpdateDevice(IDevice device)
         {
-            muteChangedSubscription?.Dispose();
-            muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
-            UpdateStatus(device);
+            try { muteChangedSubscription?.Dispose(); } catch { }
+            muteChangedSubscription = null;
+            try
+            {
+                muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
+                UpdateStatus(device);
+            }
+            catch (Exception ex)
+            {
+                // A device that was just unplugged can throw from any COM call.
+                AppLog.Write("UpdateDevice failed", ex);
+                try { UpdateStatus(null); } catch { }
+            }
         }
 
         public IDevice getSelectedDevice()
@@ -568,8 +779,9 @@ namespace MicMute
         {
             try
             {
-                var controller = new AudioSwitcher.AudioApi.CoreAudio.CoreAudioController();
-                var dev = controller.DefaultPlaybackDevice;
+                // Reuse the existing controller: creating a new CoreAudioController on every sound
+                // leaked COM objects/threads and could block the UI thread.
+                var dev = AudioController.DefaultPlaybackDevice;
                 if (dev != null)
                 {
                     return (int)dev.Volume;
@@ -582,6 +794,10 @@ namespace MicMute
             return 100;
         }
 
+        private readonly System.Threading.AutoResetEvent soundSignal = new System.Threading.AutoResetEvent(false);
+        private System.Threading.Thread soundThread;
+        private volatile string pendingSoundPath;
+
         public void PlaySoundFile(string filePath)
         {
             string resolvedPath = ResolveSoundPath(filePath);
@@ -590,22 +806,52 @@ namespace MicMute
                 return;
             }
 
-            try
+            // Never run mciSendString or DefaultPlaybackDevice queries on the UI thread:
+            // when a USB/Bluetooth audio hub disconnects/reconnects, winmm.dll can block for seconds,
+            // which previously froze the tray icon and message loop.
+            pendingSoundPath = resolvedPath;
+            EnsureSoundThread();
+            soundSignal.Set();
+        }
+
+        private void EnsureSoundThread()
+        {
+            if (soundThread != null && soundThread.IsAlive) return;
+            soundThread = new System.Threading.Thread(SoundWorkerLoop)
             {
-                mciSendString("close micMuteSound", null, 0, IntPtr.Zero);
-                mciSendString(string.Format("open \"{0}\" type mpegvideo alias micMuteSound", resolvedPath), null, 0, IntPtr.Zero);
-                
-                // Scale user preference volume by current Windows master volume
-                int winVol = GetWindowsVolume();
-                int finalVol = (int)((soundVolume / 100.0) * winVol * 10);
-                mciSendString(string.Format("setaudio micMuteSound volume to {0}", finalVol), null, 0, IntPtr.Zero);
-                
-                mciSendString("play micMuteSound", null, 0, IntPtr.Zero);
-            }
-            catch (Exception ex)
+                IsBackground = true,
+                Name = "MicMute.SoundWorker"
+            };
+            soundThread.Start();
+        }
+
+        private void SoundWorkerLoop()
+        {
+            while (!isExiting)
             {
-                Console.WriteLine("Error playing sound: " + ex.Message);
+                soundSignal.WaitOne();
+                if (isExiting) break;
+
+                string pathToPlay = pendingSoundPath;
+                if (string.IsNullOrEmpty(pathToPlay)) continue;
+
+                try
+                {
+                    mciSendString("close micMuteSound", null, 0, IntPtr.Zero);
+                    mciSendString(string.Format("open \"{0}\" type mpegvideo alias micMuteSound", pathToPlay), null, 0, IntPtr.Zero);
+
+                    int winVol = GetWindowsVolume();
+                    int finalVol = (int)((soundVolume / 100.0) * winVol * 10);
+                    mciSendString(string.Format("setaudio micMuteSound volume to {0}", finalVol), null, 0, IntPtr.Zero);
+
+                    mciSendString("play micMuteSound", null, 0, IntPtr.Zero);
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write("Error playing sound", ex);
+                }
             }
+            try { mciSendString("close micMuteSound", null, 0, IntPtr.Zero); } catch { }
         }
 
         private Icon CreateDynamicIcon(string glyph, Color accentColor)
@@ -659,7 +905,24 @@ namespace MicMute
 
         public void UpdateStatus(IDevice device)
         {
-            MicStatus newStatus = (device != null) ? (device.IsMuted ? MicStatus.Off : MicStatus.On) : MicStatus.Error;
+            bool deviceMuted = false;
+            string deviceFullName = "";
+            if (device != null)
+            {
+                try
+                {
+                    deviceMuted = device.IsMuted;
+                    deviceFullName = device.FullName ?? "";
+                }
+                catch (Exception ex)
+                {
+                    // Device endpoint was invalidated mid-query (e.g. USB dongle unplugged)
+                    AppLog.Write("Device became unavailable during UpdateStatus", ex);
+                    device = null;
+                }
+            }
+
+            MicStatus newStatus = (device != null) ? (deviceMuted ? MicStatus.Off : MicStatus.On) : MicStatus.Error;
             bool playSound = currentStatus != MicStatus.Initial && currentStatus != newStatus;
             currentStatus = newStatus;
 
@@ -676,7 +939,7 @@ namespace MicMute
                     
                     SetTrayIcon(iconOn ?? CreateDynamicIcon(statusGlyph, statusColor));
                     if (iconOn != null) this.Icon = iconOn;
-                    this.icon.Text = device.FullName.Substring(0, Math.Min(device.FullName.Length, 63));
+                    this.icon.Text = deviceFullName.Substring(0, Math.Min(deviceFullName.Length, 63));
                     
                     if (playSound && playSoundOnUnmute) PlaySoundFile(soundUnmutePath);
                     break;
@@ -688,7 +951,7 @@ namespace MicMute
                     
                     SetTrayIcon(iconOff ?? CreateDynamicIcon(statusGlyph, statusColor));
                     if (iconOff != null) this.Icon = iconOff;
-                    this.icon.Text = device.FullName.Substring(0, Math.Min(device.FullName.Length, 63));
+                    this.icon.Text = deviceFullName.Substring(0, Math.Min(deviceFullName.Length, 63));
                     
                     if (playSound && playSoundOnMute) PlaySoundFile(soundMutePath);
                     break;
@@ -709,7 +972,7 @@ namespace MicMute
             // Update main window controls
             lblStatusText.Text = statusText;
             lblStatusText.ForeColor = statusColor;
-            lblDeviceName.Text = device != null ? device.FullName : (currentLang == "EN" ? "< No device detected >" : "< Nenhum dispositivo detectado >");
+            lblDeviceName.Text = device != null ? deviceFullName : (currentLang == "EN" ? "< No device detected >" : "< Nenhum dispositivo detectado >");
             
             // Customize visual status button to use the dark theme background and a modern border
             btnToggleMic.Image = currentStatus == MicStatus.On ? imgOn : (currentStatus == MicStatus.Off ? imgOff : null);
@@ -721,31 +984,44 @@ namespace MicMute
             btnToggleMic.CustomBorderColor = FluentTheme.CardBorder;
         }
 
-        public async void ToggleMicStatus()
+        // Run COM mute operations on a background thread so a disconnecting USB/Bluetooth device never blocks the UI thread.
+        public void ToggleMicStatus()
         {
-            var dev = getSelectedDevice();
-            if (dev != null)
+            System.Threading.Tasks.Task.Run(async () =>
             {
-                await dev.ToggleMuteAsync();
-            }
+                try
+                {
+                    var dev = getSelectedDevice();
+                    if (dev != null) await dev.ToggleMuteAsync();
+                }
+                catch (Exception ex) { AppLog.Write("ToggleMicStatus failed", ex); }
+            });
         }
 
-        public async void MuteMicStatus()
+        public void MuteMicStatus()
         {
-            var dev = getSelectedDevice();
-            if (dev != null)
+            System.Threading.Tasks.Task.Run(async () =>
             {
-                await dev.SetMuteAsync(true);
-            }
+                try
+                {
+                    var dev = getSelectedDevice();
+                    if (dev != null) await dev.SetMuteAsync(true);
+                }
+                catch (Exception ex) { AppLog.Write("MuteMicStatus failed", ex); }
+            });
         }
 
-        public async void UnMuteMicStatus()
+        public void UnMuteMicStatus()
         {
-            var dev = getSelectedDevice();
-            if (dev != null)
+            System.Threading.Tasks.Task.Run(async () =>
             {
-                await dev.SetMuteAsync(false);
-            }
+                try
+                {
+                    var dev = getSelectedDevice();
+                    if (dev != null) await dev.SetMuteAsync(false);
+                }
+                catch (Exception ex) { AppLog.Write("UnMuteMicStatus failed", ex); }
+            });
         }
 
         private void Icon_MouseClick(object sender, MouseEventArgs e)
@@ -802,7 +1078,8 @@ namespace MicMute
                 SoundUnmutePath = soundUnmutePath ?? "",
                 SoundVolume     = soundVolume,
                 Language        = currentLang ?? "PT",
-                StartWithWindows = chkStartWithWindows.Checked
+                StartWithWindows = chkStartWithWindows.Checked,
+                DisableAutoUpdate = disableAutoUpdate
             };
         }
 
@@ -815,6 +1092,8 @@ namespace MicMute
             if (s == null) return;
             try
             {
+                disableAutoUpdate = s.DisableAutoUpdate;
+
                 // Device
                 if (s.DeviceId != null) selectedDeviceId = s.DeviceId;
                 if (s.DeviceName != null) selectedDeviceName = s.DeviceName;
@@ -994,25 +1273,31 @@ namespace MicMute
         {
             hotkeyTextBox.Hotkey = null;
             hotkeyTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
+            if (!isInitializing) SaveSettingsToFile();
         }
         
         private void muteReset_Click(object sender, EventArgs e)
         {
             muteTextBox.Hotkey = null;
             muteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
+            if (!isInitializing) SaveSettingsToFile();
         }
 
         private void unmuteReset_Click(object sender, EventArgs e)
         {
             unmuteTextBox.Hotkey = null;
             unmuteTextBox.Text = currentLang == "EN" ? "None" : "Nenhum";
+            if (!isInitializing) SaveSettingsToFile();
         }
 
         private void ExitMenuItem_Click(object sender, EventArgs e)
         {
             isExiting = true;
+            try { soundSignal.Set(); } catch { }
             SaveSettings();
             globalHook.Unhook();
+            Watchdog.Stop();
+            icon.Visible = false; // removes the tray icon immediately (no ghost icon)
             SetTrayIcon(null);
             Application.Exit();
         }
@@ -1175,6 +1460,7 @@ namespace MicMute
                 hotkeyToolStripMenuItem.Text = "Configurações";
                 toolStripMenuItem1.Text = "Fechar";
             }
+            RefreshUpdateMenu();
 
             // Translate the textbox text values
             hotkeyTextBox.Text = TranslateHotkeyText(hotkeyTextBox.Text, lang);
@@ -1183,9 +1469,7 @@ namespace MicMute
 
             // Refresh device dropdown with translated default device name
             LoadMicsDropdown();
-
-            var dev = getSelectedDevice();
-            UpdateStatus(dev);
+            UpdateSelectedDevice();
         }
 
         private void CbLanguage_SelectedIndexChanged(object sender, EventArgs e)
@@ -1448,11 +1732,18 @@ namespace MicMute
                 int vkCode = System.Runtime.InteropServices.Marshal.ReadInt32(lParam);
                 Keys key = (Keys)vkCode;
 
-                KeyEventArgs args = new KeyEventArgs(key | ModifierKeys);
-                KeyDown?.Invoke(this, args);
-                if (args.Handled)
+                try
                 {
-                    return (IntPtr)1;
+                    KeyEventArgs args = new KeyEventArgs(key | ModifierKeys);
+                    KeyDown?.Invoke(this, args);
+                    if (args.Handled)
+                    {
+                        return (IntPtr)1;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Write("Keyboard hook callback failed", ex);
                 }
             }
             return CallNextHookEx(_hookID, nCode, wParam, lParam);

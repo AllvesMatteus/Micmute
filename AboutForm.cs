@@ -78,6 +78,10 @@ namespace MicMute
                 lblAuthorLabel.Text = "Desenvolvido por:";
             }
 
+            // Version comes from the assembly (single source of truth, used by the auto-updater)
+            Version v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            lblTitle.Text = "MicMute v" + v.Major + "." + v.Minor + "." + v.Build + (v.Revision > 0 ? "." + v.Revision : "");
+
             // Set application icon if available
             string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"assets\icons\micon.ico");
             if (File.Exists(iconPath))
