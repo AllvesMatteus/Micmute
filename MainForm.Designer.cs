@@ -83,6 +83,8 @@ namespace MicMute
             // General Settings controls
             this.lblStartWithWindows = new System.Windows.Forms.Label();
             this.chkStartWithWindows = new MicMute.ModernToggleSwitch();
+            this.lblVersionInfo = new System.Windows.Forms.Label();
+            this.btnUpdateApp = new MicMute.ModernButton();
             this.btnAbout = new MicMute.ModernButton();
             this.cbLanguage = new MicMute.ModernComboBox();
             
@@ -551,6 +553,8 @@ namespace MicMute
             this.panelGeneral.BorderWidth = 1;
             this.panelGeneral.Controls.Add(this.lblStartWithWindows);
             this.panelGeneral.Controls.Add(this.chkStartWithWindows);
+            this.panelGeneral.Controls.Add(this.lblVersionInfo);
+            this.panelGeneral.Controls.Add(this.btnUpdateApp);
             this.panelGeneral.Controls.Add(this.btnAbout);
             this.panelGeneral.Controls.Add(this.cbLanguage);
             this.panelGeneral.Location = new System.Drawing.Point(15, 380);
@@ -565,21 +569,51 @@ namespace MicMute
             this.lblStartWithWindows.BackColor = System.Drawing.Color.Transparent;
             this.lblStartWithWindows.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblStartWithWindows.ForeColor = System.Drawing.Color.White;
-            this.lblStartWithWindows.Location = new System.Drawing.Point(15, 17);
+            this.lblStartWithWindows.Location = new System.Drawing.Point(14, 17);
             this.lblStartWithWindows.Name = "lblStartWithWindows";
-            this.lblStartWithWindows.Size = new System.Drawing.Size(227, 15);
+            this.lblStartWithWindows.Size = new System.Drawing.Size(118, 15);
             this.lblStartWithWindows.TabIndex = 0;
             this.lblStartWithWindows.Text = "Iniciar com Windows";
-            // 
             // 
             // chkStartWithWindows
             // 
             this.chkStartWithWindows.Checked = false;
             this.chkStartWithWindows.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.chkStartWithWindows.Location = new System.Drawing.Point(245, 12);
+            this.chkStartWithWindows.Location = new System.Drawing.Point(138, 12);
             this.chkStartWithWindows.Name = "chkStartWithWindows";
             this.chkStartWithWindows.Size = new System.Drawing.Size(50, 26);
             this.chkStartWithWindows.TabIndex = 1;
+            // 
+            // lblVersionInfo
+            // 
+            this.lblVersionInfo.AutoSize = true;
+            this.lblVersionInfo.BackColor = System.Drawing.Color.Transparent;
+            this.lblVersionInfo.Font = new System.Drawing.Font("Segoe UI Semibold", 8.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.lblVersionInfo.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(170)))), ((int)(((byte)(170)))), ((int)(((byte)(170)))));
+            this.lblVersionInfo.Location = new System.Drawing.Point(198, 17);
+            this.lblVersionInfo.Name = "lblVersionInfo";
+            this.lblVersionInfo.Size = new System.Drawing.Size(42, 15);
+            this.lblVersionInfo.TabIndex = 4;
+            this.lblVersionInfo.Text = "v1.1.0";
+            // 
+            // btnUpdateApp
+            // 
+            this.btnUpdateApp.BackColor = System.Drawing.Color.Transparent;
+            this.btnUpdateApp.Cursor = System.Windows.Forms.Cursors.Hand;
+            this.btnUpdateApp.CustomBackColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(120)))), ((int)(((byte)(212)))));
+            this.btnUpdateApp.CustomBorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(25)))), ((int)(((byte)(142)))), ((int)(((byte)(230)))));
+            this.btnUpdateApp.CustomHoverColor = System.Drawing.Color.FromArgb(((int)(((byte)(25)))), ((int)(((byte)(142)))), ((int)(((byte)(230)))));
+            this.btnUpdateApp.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(102)))), ((int)(((byte)(180)))));
+            this.btnUpdateApp.Font = new System.Drawing.Font("Segoe UI Semibold", 8F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.btnUpdateApp.ForeColor = System.Drawing.Color.White;
+            this.btnUpdateApp.Location = new System.Drawing.Point(244, 11);
+            this.btnUpdateApp.Name = "btnUpdateApp";
+            this.btnUpdateApp.Radius = 4;
+            this.btnUpdateApp.Size = new System.Drawing.Size(74, 28);
+            this.btnUpdateApp.TabIndex = 5;
+            this.btnUpdateApp.Text = "Atualizar";
+            this.btnUpdateApp.Visible = false;
+            this.btnUpdateApp.Click += new System.EventHandler(this.BtnUpdateApp_Click);
             // 
             // btnAbout
             // 
@@ -610,9 +644,9 @@ namespace MicMute
             this.cbLanguage.Items.AddRange(new object[] {
             "PT-BR",
             "EN"});
-            this.cbLanguage.Location = new System.Drawing.Point(325, 12);
+            this.cbLanguage.Location = new System.Drawing.Point(327, 13);
             this.cbLanguage.Name = "cbLanguage";
-            this.cbLanguage.Size = new System.Drawing.Size(80, 24);
+            this.cbLanguage.Size = new System.Drawing.Size(78, 24);
             this.cbLanguage.TabIndex = 3;
             this.cbLanguage.SelectedIndexChanged += new System.EventHandler(this.CbLanguage_SelectedIndexChanged);
             // 
@@ -703,6 +737,8 @@ namespace MicMute
         private MicMute.ModernPanel panelGeneral;
         private System.Windows.Forms.Label lblStartWithWindows;
         public MicMute.ModernToggleSwitch chkStartWithWindows;
+        private System.Windows.Forms.Label lblVersionInfo;
+        private MicMute.ModernButton btnUpdateApp;
         private MicMute.ModernButton btnAbout;
         private MicMute.ModernComboBox cbLanguage;
         

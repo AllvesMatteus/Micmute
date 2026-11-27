@@ -32,15 +32,19 @@ namespace MicMute
     internal class GhRelease
     {
         [DataMember(Name = "tag_name")] public string TagName { get; set; }
+        [DataMember(Name = "name")] public string Name { get; set; }
+        [DataMember(Name = "body")] public string Body { get; set; }
+        [DataMember(Name = "published_at")] public string PublishedAt { get; set; }
+        [DataMember(Name = "html_url")] public string HtmlUrl { get; set; }
         [DataMember(Name = "draft")] public bool Draft { get; set; }
         [DataMember(Name = "prerelease")] public bool Prerelease { get; set; }
         [DataMember(Name = "assets")] public List<GhAsset> Assets { get; set; }
     }
 
     /// <summary>
-    /// Auto-updater based on GitHub Releases (same idea as electron-updater in the YouTube Music project):
+    /// Auto-updater based on GitHub Releases:
     /// checks the latest release on startup and every 6 hours, downloads the installer in the
-    /// background and then waits for the user to restart (one click) to apply it silently.
+    /// background, exposes release metadata (date, changelog, URL) for AboutForm, and installs silently on click.
     /// </summary>
     public sealed class UpdateService
     {
@@ -63,6 +67,13 @@ namespace MicMute
         public Version LatestVersion { get; private set; }
         public Version CurrentVersion { get; private set; }
 
+        /// <summary>Release date of the current/latest release (local time).</summary>
+        public DateTime? ReleaseDate { get; private set; }
+        /// <summary>Changelog / description from GitHub Release body.</summary>
+        public string ReleaseNotes { get; private set; }
+        /// <summary>HTML URL to the GitHub Release page.</summary>
+        public string ReleaseUrl { get; private set; }
+
         public static string UpdatesDir
         {
             get
@@ -77,13 +88,28 @@ namespace MicMute
         {
             CurrentVersion = Normalize(Assembly.GetExecutingAssembly().GetName().Version);
             State = UpdateState.Idle;
+            try
+            {
+                string exePath = Assembly.GetExecutingAssembly().Location;
+                if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+                    ReleaseDate = File.GetLastWriteTime(exePath);
+            }
+            catch { }
+            ReleaseUrl = "https://github.com/" + Owner + "/" + Repo + "/releases";
         }
 
-        /// <summary>Starts periodic automatic checks (first one 10 s after startup).</summary>
+        public static string FormatShortVersion(Version v)
+        {
+            if (v == null) return "0.0.0";
+            if (v.Revision > 0) return v.Major + "." + v.Minor + "." + v.Build + "." + v.Revision;
+            return v.Major + "." + v.Minor + "." + v.Build;
+        }
+
+        /// <summary>Starts periodic automatic checks (first one 4 s after startup).</summary>
         public void StartAutomatic()
         {
             if (timer != null) return;
-            timer = new Timer(delegate { CheckAsync(false); }, null, TimeSpan.FromSeconds(10), CheckInterval);
+            timer = new Timer(delegate { CheckAsync(false); }, null, TimeSpan.FromSeconds(4), CheckInterval);
         }
 
         public void CheckAsync(bool manual)
@@ -114,6 +140,17 @@ namespace MicMute
                 if (release == null || release.Draft || release.Prerelease || !TryParseVersion(release.TagName, out latest))
                     throw new InvalidOperationException("Release inválida ou sem versão: " + (release == null ? "null" : release.TagName));
 
+                // Capture metadata from GitHub release
+                DateTime parsedDate;
+                if (!string.IsNullOrEmpty(release.PublishedAt) && DateTime.TryParse(release.PublishedAt, out parsedDate))
+                    ReleaseDate = parsedDate.ToLocalTime();
+                if (!string.IsNullOrWhiteSpace(release.Body))
+                    ReleaseNotes = CleanReleaseNotes(release.Body);
+                if (!string.IsNullOrWhiteSpace(release.HtmlUrl))
+                    ReleaseUrl = release.HtmlUrl;
+
+                LatestVersion = latest;
+
                 if (latest <= CurrentVersion)
                 {
                     SetState(UpdateState.UpToDate, 0);
@@ -127,7 +164,6 @@ namespace MicMute
                 if (asset == null || !IsTrustedUrl(asset.Url))
                     throw new InvalidOperationException("Instalador não encontrado na release " + release.TagName + ".");
 
-                LatestVersion = latest;
                 AppLog.Write("Update available: " + latest + " (current " + CurrentVersion + ")");
                 SetState(UpdateState.Available, 0);
 
@@ -147,10 +183,22 @@ namespace MicMute
             }
         }
 
+        private static string CleanReleaseNotes(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body)) return "";
+            var lines = body.Replace("\r\n", "\n").Split('\n')
+                .Select(l => l.Trim())
+                .Where(l => !string.IsNullOrEmpty(l) && !l.StartsWith("###"))
+                .Select(l => l.StartsWith("* ") || l.StartsWith("- ") ? "• " + l.Substring(2).Trim() : l)
+                .Distinct()
+                .ToList();
+            return string.Join(Environment.NewLine, lines);
+        }
+
         private static HttpClient CreateClient(TimeSpan timeout)
         {
             var http = new HttpClient { Timeout = timeout };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("MicMute-Updater/1.0");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("MicMute-Updater/1.1");
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
             return http;
         }
@@ -181,7 +229,7 @@ namespace MicMute
         private async Task DownloadAsync(GhAsset asset, Version version)
         {
             Directory.CreateDirectory(UpdatesDir);
-            string final = Path.Combine(UpdatesDir, "MicMute_Setup_" + version + ".exe");
+            string final = Path.Combine(UpdatesDir, "MicMute_Setup_" + FormatShortVersion(version) + ".exe");
             string part = final + ".part";
             CleanOldInstallers(final);
 
@@ -235,7 +283,6 @@ namespace MicMute
 
         private static bool VerifyDigest(string path, string digest)
         {
-            // GitHub exposes "sha256:<hex>" for release assets. If absent, skip (size is still checked).
             if (string.IsNullOrEmpty(digest) || !digest.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase))
                 return true;
             using (var sha = SHA256.Create())
@@ -262,11 +309,6 @@ namespace MicMute
             catch { }
         }
 
-        /// <summary>
-        /// Launches the downloaded installer silently. The caller must exit the app right after.
-        /// The installer relaunches MicMute when it finishes (see setup.iss).
-        /// Returns false if there is nothing to install or the user denied the UAC prompt.
-        /// </summary>
         public bool LaunchInstaller()
         {
             if (State != UpdateState.Downloaded || string.IsNullOrEmpty(installerPath) || !File.Exists(installerPath))
@@ -275,7 +317,7 @@ namespace MicMute
             {
                 var psi = new ProcessStartInfo(installerPath, "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /FORCECLOSEAPPLICATIONS")
                 {
-                    UseShellExecute = true, // required to show the UAC elevation prompt
+                    UseShellExecute = true,
                     WorkingDirectory = UpdatesDir
                 };
                 Process.Start(psi);

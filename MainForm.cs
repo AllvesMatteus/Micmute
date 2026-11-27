@@ -101,14 +101,14 @@ namespace MicMute
         // ─── Auto-update ──────────────────────────────────────────────────────────
 
         private UpdateService updater;
-        private ToolStripMenuItem updateMenuItem;
         private UpdateState lastUpdateState = UpdateState.Idle;
-        private bool manualUpdateCheck;
         private bool disableAutoUpdate;
 
         private void InitUpdater()
         {
             updater = new UpdateService();
+            lblVersionInfo.Text = "v" + UpdateService.FormatShortVersion(updater.CurrentVersion);
+
             updater.StateChanged += () =>
             {
                 try
@@ -121,20 +121,15 @@ namespace MicMute
             icon.BalloonTipClicked += (s, e) => { if (updater.State == UpdateState.Downloaded) InstallUpdateAndExit(); };
 
             if (!disableAutoUpdate) updater.StartAutomatic();
-            RefreshUpdateMenu();
+            RefreshUpdateUI();
         }
 
-        private void UpdateMenuItem_Click(object sender, EventArgs e)
+        private void BtnUpdateApp_Click(object sender, EventArgs e)
         {
             if (updater == null) return;
             if (updater.State == UpdateState.Downloaded)
             {
                 InstallUpdateAndExit();
-            }
-            else
-            {
-                manualUpdateCheck = true;
-                updater.CheckAsync(true);
             }
         }
 
@@ -148,7 +143,7 @@ namespace MicMute
 
         private void OnUpdateStateChanged()
         {
-            RefreshUpdateMenu();
+            RefreshUpdateUI();
             UpdateState st = updater.State;
             bool en = currentLang == "EN";
 
@@ -156,58 +151,43 @@ namespace MicMute
             {
                 if (st == UpdateState.Downloaded)
                 {
+                    string verStr = UpdateService.FormatShortVersion(updater.LatestVersion);
                     icon.ShowBalloonTip(8000,
                         en ? "MicMute update ready" : "Atualização do MicMute pronta",
-                        en ? "Version " + updater.LatestVersion + " downloaded. Click here to restart and update."
-                           : "Versão " + updater.LatestVersion + " baixada. Clique aqui para reiniciar e atualizar.",
+                        en ? "Version v" + verStr + " downloaded. Click here or press Update in settings."
+                           : "Versão v" + verStr + " baixada. Clique aqui ou no botão Atualizar nas configurações.",
                         ToolTipIcon.Info);
                 }
-                else if (st == UpdateState.UpToDate && manualUpdateCheck)
-                {
-                    icon.ShowBalloonTip(4000, "MicMute",
-                        en ? "You are already on the latest version." : "Você já está na versão mais recente.",
-                        ToolTipIcon.Info);
-                }
-                else if (st == UpdateState.Error && manualUpdateCheck)
-                {
-                    icon.ShowBalloonTip(5000, "MicMute",
-                        (en ? "Could not check for updates: " : "Não foi possível verificar atualizações: ") + updater.ErrorMessage,
-                        ToolTipIcon.Warning);
-                }
-
-                if (st == UpdateState.UpToDate || st == UpdateState.Error || st == UpdateState.Downloaded)
-                    manualUpdateCheck = false;
             }
             lastUpdateState = st;
         }
 
-        private void RefreshUpdateMenu()
+        private void RefreshUpdateUI()
         {
-            if (updateMenuItem == null) return;
+            if (lblVersionInfo == null || btnUpdateApp == null) return;
             bool en = currentLang == "EN";
-            UpdateState st = updater != null ? updater.State : UpdateState.Idle;
+            string curVer = updater != null
+                ? UpdateService.FormatShortVersion(updater.CurrentVersion)
+                : UpdateService.FormatShortVersion(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
 
+            lblVersionInfo.Text = "v" + curVer;
+
+            UpdateState st = updater != null ? updater.State : UpdateState.Idle;
             switch (st)
             {
-                case UpdateState.Checking:
-                    updateMenuItem.Text = en ? "Checking for updates..." : "Verificando atualizações...";
-                    updateMenuItem.Enabled = false;
-                    break;
                 case UpdateState.Available:
-                    updateMenuItem.Text = en ? "Update found..." : "Atualização encontrada...";
-                    updateMenuItem.Enabled = false;
-                    break;
                 case UpdateState.Downloading:
-                    updateMenuItem.Text = (en ? "Downloading update... " : "Baixando atualização... ") + updater.Progress + "%";
-                    updateMenuItem.Enabled = false;
+                    btnUpdateApp.Visible = true;
+                    btnUpdateApp.Enabled = false;
+                    btnUpdateApp.Text = updater.Progress > 0 ? (updater.Progress + "%") : "...";
                     break;
                 case UpdateState.Downloaded:
-                    updateMenuItem.Text = (en ? "Restart to update (v" : "Reiniciar para atualizar (v") + updater.LatestVersion + ")";
-                    updateMenuItem.Enabled = true;
+                    btnUpdateApp.Visible = true;
+                    btnUpdateApp.Enabled = true;
+                    btnUpdateApp.Text = en ? "Update" : "Atualizar";
                     break;
                 default:
-                    updateMenuItem.Text = en ? "Check for updates" : "Verificar atualizações";
-                    updateMenuItem.Enabled = true;
+                    btnUpdateApp.Visible = false;
                     break;
             }
         }
@@ -353,12 +333,6 @@ namespace MicMute
             ApplyWindowTheme();
 
             // ── Tray context menu ─────────────────────────────────────────
-            // "Check for updates / Restart to update" entry (between Settings and Close)
-            updateMenuItem = new ToolStripMenuItem();
-            updateMenuItem.Click += UpdateMenuItem_Click;
-            iconContextMenu.Items.Insert(1, updateMenuItem);
-            RefreshUpdateMenu();
-
             iconContextMenu.Renderer = new FluentMenuRenderer();
             iconContextMenu.ShowImageMargin = false;
             iconContextMenu.ShowCheckMargin = false;
@@ -1373,7 +1347,7 @@ namespace MicMute
 
         private void BtnAbout_Click(object sender, EventArgs e)
         {
-            using (AboutForm about = new AboutForm(currentLang))
+            using (AboutForm about = new AboutForm(currentLang, updater))
             {
                 about.ShowDialog(this);
             }
@@ -1460,7 +1434,7 @@ namespace MicMute
                 hotkeyToolStripMenuItem.Text = "Configurações";
                 toolStripMenuItem1.Text = "Fechar";
             }
-            RefreshUpdateMenu();
+            RefreshUpdateUI();
 
             // Translate the textbox text values
             hotkeyTextBox.Text = TranslateHotkeyText(hotkeyTextBox.Text, lang);
