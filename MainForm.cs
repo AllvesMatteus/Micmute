@@ -663,7 +663,35 @@ namespace MicMute
         {
             try
             {
-                return selectedDeviceId == "" ? AudioController.DefaultCaptureDevice : AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
+                if (string.IsNullOrEmpty(selectedDeviceId))
+                    return AudioController.DefaultCaptureDevice;
+
+                IDevice dev = AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
+                if (dev != null) return dev;
+
+                // Fallback by name if the USB/Bluetooth endpoint GUID changed after reconnecting
+                if (!string.IsNullOrEmpty(selectedDeviceName) && selectedDeviceName != DEFAULT_RECORDING_DEVICE)
+                {
+                    var devices = AudioController.GetCaptureDevices();
+                    if (devices != null)
+                    {
+                        foreach (CoreAudioDevice d in devices)
+                        {
+                            try
+                            {
+                                if (d != null && d.State == DeviceState.Active &&
+                                    string.Equals(d.FullName, selectedDeviceName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    selectedDeviceId = d.Id.ToString();
+                                    return d;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+
+                return AudioController.DefaultCaptureDevice;
             }
             catch
             {
@@ -768,10 +796,6 @@ namespace MicMute
             return 100;
         }
 
-        private readonly System.Threading.AutoResetEvent soundSignal = new System.Threading.AutoResetEvent(false);
-        private System.Threading.Thread soundThread;
-        private volatile string pendingSoundPath;
-
         public void PlaySoundFile(string filePath)
         {
             string resolvedPath = ResolveSoundPath(filePath);
@@ -780,52 +804,45 @@ namespace MicMute
                 return;
             }
 
-            // Never run mciSendString or DefaultPlaybackDevice queries on the UI thread:
-            // when a USB/Bluetooth audio hub disconnects/reconnects, winmm.dll can block for seconds,
-            // which previously froze the tray icon and message loop.
-            pendingSoundPath = resolvedPath;
-            EnsureSoundThread();
-            soundSignal.Set();
+            // mciSendString ("type mpegvideo") requires an STA thread with an active Windows message loop
+            // (the WinForms UI thread). If called from another thread, marshal to the UI thread.
+            if (InvokeRequired)
+            {
+                try { BeginInvoke(new Action(() => PlaySoundFileOnUiThread(resolvedPath))); } catch { }
+                return;
+            }
+
+            PlaySoundFileOnUiThread(resolvedPath);
         }
 
-        private void EnsureSoundThread()
+        private void PlaySoundFileOnUiThread(string resolvedPath)
         {
-            if (soundThread != null && soundThread.IsAlive) return;
-            soundThread = new System.Threading.Thread(SoundWorkerLoop)
+            try
             {
-                IsBackground = true,
-                Name = "MicMute.SoundWorker"
-            };
-            soundThread.Start();
-        }
-
-        private void SoundWorkerLoop()
-        {
-            while (!isExiting)
-            {
-                soundSignal.WaitOne();
-                if (isExiting) break;
-
-                string pathToPlay = pendingSoundPath;
-                if (string.IsNullOrEmpty(pathToPlay)) continue;
-
-                try
+                mciSendString("close micMuteSound", null, 0, IntPtr.Zero);
+                long openErr = mciSendString(string.Format("open \"{0}\" type mpegvideo alias micMuteSound", resolvedPath), null, 0, IntPtr.Zero);
+                if (openErr == 0)
                 {
-                    mciSendString("close micMuteSound", null, 0, IntPtr.Zero);
-                    mciSendString(string.Format("open \"{0}\" type mpegvideo alias micMuteSound", pathToPlay), null, 0, IntPtr.Zero);
-
                     int winVol = GetWindowsVolume();
-                    int finalVol = (int)((soundVolume / 100.0) * winVol * 10);
+                    int finalVol = Math.Max(0, Math.Min(1000, (int)((soundVolume / 100.0) * winVol * 10)));
                     mciSendString(string.Format("setaudio micMuteSound volume to {0}", finalVol), null, 0, IntPtr.Zero);
-
-                    mciSendString("play micMuteSound", null, 0, IntPtr.Zero);
+                    long playErr = mciSendString("play micMuteSound", null, 0, IntPtr.Zero);
+                    if (playErr == 0) return;
                 }
-                catch (Exception ex)
+
+                // Fallback for WAV files if MCI mpegvideo filter fails on the machine
+                if (resolvedPath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
                 {
-                    AppLog.Write("Error playing sound", ex);
+                    using (var sp = new SoundPlayer(resolvedPath))
+                    {
+                        sp.Play();
+                    }
                 }
             }
-            try { mciSendString("close micMuteSound", null, 0, IntPtr.Zero); } catch { }
+            catch (Exception ex)
+            {
+                AppLog.Write("Error playing sound", ex);
+            }
         }
 
         private Icon CreateDynamicIcon(string glyph, Color accentColor)
@@ -958,44 +975,46 @@ namespace MicMute
             btnToggleMic.CustomBorderColor = FluentTheme.CardBorder;
         }
 
-        // Run COM mute operations on a background thread so a disconnecting USB/Bluetooth device never blocks the UI thread.
-        public void ToggleMicStatus()
+        public async void ToggleMicStatus()
         {
-            System.Threading.Tasks.Task.Run(async () =>
+            try
             {
-                try
+                var dev = getSelectedDevice();
+                if (dev != null)
                 {
-                    var dev = getSelectedDevice();
-                    if (dev != null) await dev.ToggleMuteAsync();
+                    await dev.ToggleMuteAsync();
+                    UpdateStatus(dev);
                 }
-                catch (Exception ex) { AppLog.Write("ToggleMicStatus failed", ex); }
-            });
+            }
+            catch (Exception ex) { AppLog.Write("ToggleMicStatus failed", ex); }
         }
 
-        public void MuteMicStatus()
+        public async void MuteMicStatus()
         {
-            System.Threading.Tasks.Task.Run(async () =>
+            try
             {
-                try
+                var dev = getSelectedDevice();
+                if (dev != null)
                 {
-                    var dev = getSelectedDevice();
-                    if (dev != null) await dev.SetMuteAsync(true);
+                    await dev.SetMuteAsync(true);
+                    UpdateStatus(dev);
                 }
-                catch (Exception ex) { AppLog.Write("MuteMicStatus failed", ex); }
-            });
+            }
+            catch (Exception ex) { AppLog.Write("MuteMicStatus failed", ex); }
         }
 
-        public void UnMuteMicStatus()
+        public async void UnMuteMicStatus()
         {
-            System.Threading.Tasks.Task.Run(async () =>
+            try
             {
-                try
+                var dev = getSelectedDevice();
+                if (dev != null)
                 {
-                    var dev = getSelectedDevice();
-                    if (dev != null) await dev.SetMuteAsync(false);
+                    await dev.SetMuteAsync(false);
+                    UpdateStatus(dev);
                 }
-                catch (Exception ex) { AppLog.Write("UnMuteMicStatus failed", ex); }
-            });
+            }
+            catch (Exception ex) { AppLog.Write("UnMuteMicStatus failed", ex); }
         }
 
         private void Icon_MouseClick(object sender, MouseEventArgs e)
@@ -1267,7 +1286,7 @@ namespace MicMute
         private void ExitMenuItem_Click(object sender, EventArgs e)
         {
             isExiting = true;
-            try { soundSignal.Set(); } catch { }
+            try { mciSendString("close micMuteSound", null, 0, IntPtr.Zero); } catch { }
             SaveSettings();
             globalHook.Unhook();
             Watchdog.Stop();

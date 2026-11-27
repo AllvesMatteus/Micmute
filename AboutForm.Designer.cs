@@ -145,9 +145,9 @@ namespace MicMute
             this.lblAuthorName.ForeColor = System.Drawing.Color.White;
             this.lblAuthorName.Location = new System.Drawing.Point(16, 223);
             this.lblAuthorName.Name = "lblAuthorName";
-            this.lblAuthorName.Size = new System.Drawing.Size(91, 19);
+            this.lblAuthorName.Size = new System.Drawing.Size(102, 19);
             this.lblAuthorName.TabIndex = 7;
-            this.lblAuthorName.Text = "Mateus Alves";
+            this.lblAuthorName.Text = "AllvesMatteus";
             // 
             // btnGithub
             // 
@@ -191,7 +191,7 @@ namespace MicMute
             this.btnReleasePage.Radius = 6;
             this.btnReleasePage.Size = new System.Drawing.Size(120, 32);
             this.btnReleasePage.TabIndex = 10;
-            this.btnReleasePage.Text = "Ver Release";
+            this.btnReleasePage.Text = "Repositório";
             this.btnReleasePage.Click += new System.EventHandler(this.BtnReleasePage_Click);
             // 
             // AboutForm

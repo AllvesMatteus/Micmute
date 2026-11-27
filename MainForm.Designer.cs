@@ -590,7 +590,7 @@ namespace MicMute
             this.lblVersionInfo.BackColor = System.Drawing.Color.Transparent;
             this.lblVersionInfo.Font = new System.Drawing.Font("Segoe UI Semibold", 8.5F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.lblVersionInfo.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(170)))), ((int)(((byte)(170)))), ((int)(((byte)(170)))));
-            this.lblVersionInfo.Location = new System.Drawing.Point(198, 17);
+            this.lblVersionInfo.Location = new System.Drawing.Point(364, 17);
             this.lblVersionInfo.Name = "lblVersionInfo";
             this.lblVersionInfo.Size = new System.Drawing.Size(42, 15);
             this.lblVersionInfo.TabIndex = 4;
@@ -606,10 +606,10 @@ namespace MicMute
             this.btnUpdateApp.CustomPressedColor = System.Drawing.Color.FromArgb(((int)(((byte)(0)))), ((int)(((byte)(102)))), ((int)(((byte)(180)))));
             this.btnUpdateApp.Font = new System.Drawing.Font("Segoe UI Semibold", 8F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.btnUpdateApp.ForeColor = System.Drawing.Color.White;
-            this.btnUpdateApp.Location = new System.Drawing.Point(244, 11);
+            this.btnUpdateApp.Location = new System.Drawing.Point(196, 11);
             this.btnUpdateApp.Name = "btnUpdateApp";
             this.btnUpdateApp.Radius = 4;
-            this.btnUpdateApp.Size = new System.Drawing.Size(74, 28);
+            this.btnUpdateApp.Size = new System.Drawing.Size(72, 28);
             this.btnUpdateApp.TabIndex = 5;
             this.btnUpdateApp.Text = "Atualizar";
             this.btnUpdateApp.Visible = false;
@@ -644,7 +644,7 @@ namespace MicMute
             this.cbLanguage.Items.AddRange(new object[] {
             "PT-BR",
             "EN"});
-            this.cbLanguage.Location = new System.Drawing.Point(327, 13);
+            this.cbLanguage.Location = new System.Drawing.Point(276, 13);
             this.cbLanguage.Name = "cbLanguage";
             this.cbLanguage.Size = new System.Drawing.Size(78, 24);
             this.cbLanguage.TabIndex = 3;

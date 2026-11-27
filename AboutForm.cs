@@ -56,8 +56,9 @@ namespace MicMute
             lblTitle.Text = "MicMute v" + shortVer;
             this.Text = en ? "About MicMute" : "Sobre o MicMute";
             lblAuthorLabel.Text = en ? "Developed by:" : "Desenvolvido por:";
+            lblAuthorName.Text = "AllvesMatteus";
             lblNotesTitle.Text = en ? "Version details:" : "Detalhes da versão:";
-            btnReleasePage.Text = en ? "View Release" : "Ver Release";
+            btnReleasePage.Text = en ? "Repository" : "Repositório";
 
             string arch = Environment.Is64BitProcess ? "64-bit" : "32-bit";
             lblBuildInfo.Text = string.Format("Build {0} • .NET Framework 4.8 ({1})", v, arch);
@@ -128,12 +129,33 @@ namespace MicMute
 
             if (File.Exists(githubPath))
             {
-                btnGithub.Image = Image.FromFile(githubPath);
+                btnGithub.Image = MakeWhiteIcon(Image.FromFile(githubPath));
             }
             if (File.Exists(linkedinPath))
             {
                 btnLinkedin.Image = Image.FromFile(linkedinPath);
             }
+        }
+
+        private static Bitmap MakeWhiteIcon(Image src)
+        {
+            Bitmap bmp = new Bitmap(src.Width, src.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (Bitmap orig = new Bitmap(src))
+            {
+                for (int y = 0; y < orig.Height; y++)
+                {
+                    for (int x = 0; x < orig.Width; x++)
+                    {
+                        Color c = orig.GetPixel(x, y);
+                        if (c.A > 0)
+                        {
+                            bmp.SetPixel(x, y, Color.FromArgb(c.A, 255, 255, 255));
+                        }
+                    }
+                }
+            }
+            src.Dispose();
+            return bmp;
         }
 
         private void BtnGithub_Click(object sender, EventArgs e)
@@ -148,10 +170,7 @@ namespace MicMute
 
         private void BtnReleasePage_Click(object sender, EventArgs e)
         {
-            string url = (updater != null && !string.IsNullOrEmpty(updater.ReleaseUrl))
-                ? updater.ReleaseUrl
-                : "https://github.com/AllvesMatteus/Micmute/releases";
-            OpenUrl(url);
+            OpenUrl("https://github.com/AllvesMatteus/Micmute");
         }
 
         private void OpenUrl(string url)
