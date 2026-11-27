@@ -1,6 +1,6 @@
 ; Version is injected by publish\publish.ps1 (ISCC /DMyAppVersion=x.y.z) and must match AssemblyInfo.cs
 #ifndef MyAppVersion
-  #define MyAppVersion "0.2.0.0"
+  #define MyAppVersion "1.1.0"
 #endif
 
 [Setup]

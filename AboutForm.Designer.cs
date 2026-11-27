@@ -50,7 +50,7 @@ namespace MicMute
             this.lblTitle.Name = "lblTitle";
             this.lblTitle.Size = new System.Drawing.Size(147, 21);
             this.lblTitle.TabIndex = 0;
-            this.lblTitle.Text = "MicMute v0.2.0.0";
+            this.lblTitle.Text = "MicMute v1.1.0";
             // 
             // lblAuthorLabel
             // 
